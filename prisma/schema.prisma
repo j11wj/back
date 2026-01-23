@@ -1,0 +1,89 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  name      String
+  phone     String?
+  role      String   @default("CUSTOMER") // CUSTOMER, DRIVER, ADMIN
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  orders    Order[]
+  driver    Driver?
+
+  @@map("users")
+}
+
+model Driver {
+  id            String   @id @default(uuid())
+  userId        String   @unique
+  licenseNumber String
+  vehicleType   String
+  isAvailable   Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orders        Order[]
+
+  @@map("drivers")
+}
+
+model Zone {
+  id          String  @id @default(uuid())
+  name        String  @unique
+  minDistance Float   // in km
+  maxDistance Float   // in km
+  price       Float   // delivery price
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  orders     Order[]
+
+  @@map("zones")
+}
+
+model Order {
+  id              String   @id @default(uuid())
+  customerId      String
+  driverId        String?
+  zoneId          String?
+  status          String   @default("PENDING") // PENDING, ACCEPTED, ON_THE_WAY, DELIVERED, CANCELED
+  
+  // Location data
+  pickupLatitude  Float
+  pickupLongitude Float
+  deliveryLatitude Float
+  deliveryLongitude Float
+  
+  // Calculated data
+  distance        Float?      // in km
+  fare            Float?      // calculated fare
+  
+  // Order details
+  description     String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  // Relations
+  customer        User        @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  driver          Driver?     @relation(fields: [driverId], references: [id], onDelete: SetNull)
+  zone            Zone?       @relation(fields: [zoneId], references: [id], onDelete: SetNull)
+
+  @@map("orders")
+}
+
