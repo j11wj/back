@@ -22,9 +22,9 @@ export class RegisterDto {
   @IsString()
   phone?: string;
 
-  @ApiProperty({ example: 'CUSTOMER', enum: ['CUSTOMER', 'DRIVER', 'ADMIN'], description: 'User role', required: false })
+  @ApiProperty({ example: 'CUSTOMER', enum: ['CUSTOMER', 'DRIVER', 'ADMIN', 'RESTAURANT'], description: 'User role', required: false })
   @IsOptional()
-  @IsIn(['CUSTOMER', 'DRIVER', 'ADMIN'])
+  @IsIn(['CUSTOMER', 'DRIVER', 'ADMIN', 'RESTAURANT'])
   role?: UserRole;
 }
 

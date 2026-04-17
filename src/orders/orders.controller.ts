@@ -18,21 +18,34 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { GetUser } from '../common/decorators/get-user.decorator';
 import { UserRole } from '../common/types/user-role.type';
+import { OrderRealtimeService } from '../realtime/services/order-realtime.service';
 
 @ApiTags('orders')
 @ApiBearerAuth('JWT-auth')
 @Controller('orders')
 @UseGuards(JwtAuthGuard)
 export class OrdersController {
-  constructor(private readonly ordersService: OrdersService) {}
+  constructor(
+    private readonly ordersService: OrdersService,
+    private readonly orderRealtimeService: OrderRealtimeService,
+  ) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create a new order' })
   @ApiResponse({ status: 201, description: 'Order successfully created' })
   @ApiResponse({ status: 400, description: 'Invalid input or zone not found' })
-  create(@Body() createOrderDto: CreateOrderDto, @GetUser() user: any) {
-    return this.ordersService.create(createOrderDto, user.id);
+  async create(@Body() createOrderDto: CreateOrderDto, @GetUser() user: any) {
+    const order = await this.ordersService.create(createOrderDto, user.id);
+
+    try {
+      await this.orderRealtimeService.notifyOrderCreated(order.id, order);
+    } catch (err) {
+      // Don't fail the request if realtime notify fails (e.g. Redis down)
+      if (err?.message) console.error('[OrdersController] notifyOrderCreated:', err.message);
+    }
+
+    return order;
   }
 
   @Get()
@@ -78,17 +91,31 @@ export class OrdersController {
   @ApiParam({ name: 'id', description: 'Order ID' })
   @ApiResponse({ status: 200, description: 'Order status updated' })
   @ApiResponse({ status: 400, description: 'Invalid status transition' })
-  updateStatus(
+  async updateStatus(
     @Param('id') id: string,
     @Body() updateOrderStatusDto: UpdateOrderStatusDto,
     @GetUser() user: any,
   ) {
-    return this.ordersService.updateStatus(
+    const order = await this.ordersService.updateStatus(
       id,
       updateOrderStatusDto,
       user.id,
       user.role,
     );
+
+    // Emit real-time status update
+    await this.orderRealtimeService.emitOrderStatusUpdate(
+      order.id,
+      order.status,
+      order,
+    );
+
+    // Close order room if order is delivered or canceled
+    if (order.status === 'DELIVERED' || order.status === 'CANCELED') {
+      await this.orderRealtimeService.closeOrderRoom(order.id);
+    }
+
+    return order;
   }
 }
 

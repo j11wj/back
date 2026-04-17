@@ -1,6 +1,17 @@
-import { Controller, Get, Param, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
 import { UsersService } from './users.service';
+import { UpdateProfileDto } from './dto/update-profile.dto';
+import { UpdateLocaleDto } from './dto/update-locale.dto';
+import { UpdateFcmTokenDto } from './dto/update-fcm-token.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -19,6 +30,34 @@ export class UsersController {
   @ApiResponse({ status: 200, description: 'User profile' })
   getProfile(@GetUser() user: any) {
     return this.usersService.getProfile(user.id);
+  }
+
+  @Patch('profile')
+  @ApiOperation({ summary: 'Update current user profile (name, phone)' })
+  @ApiResponse({ status: 200, description: 'Updated user profile' })
+  @ApiResponse({ status: 409, description: 'Phone already in use' })
+  updateProfile(@GetUser() user: any, @Body() dto: UpdateProfileDto) {
+    return this.usersService.updateProfile(user.id, dto);
+  }
+
+  @Patch('locale')
+  @ApiOperation({ summary: 'Update current user locale' })
+  updateLocale(@GetUser() user: any, @Body() dto: UpdateLocaleDto) {
+    return this.usersService.updateLocale(user.id, dto);
+  }
+
+  @Patch('fcm-token')
+  @ApiOperation({
+    summary: 'تسجيل توكن FCM الخاص بالجهاز لإرسال الإشعارات عبر Firebase',
+  })
+  updateFcmToken(@GetUser() user: any, @Body() dto: UpdateFcmTokenDto) {
+    return this.usersService.updateFcmToken(user.id, dto);
+  }
+
+  @Delete('profile')
+  @ApiOperation({ summary: 'Delete current user account' })
+  deleteProfile(@GetUser() user: any) {
+    return this.usersService.deleteProfile(user.id);
   }
 
   @Get()

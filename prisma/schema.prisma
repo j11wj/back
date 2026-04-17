@@ -15,16 +15,111 @@ model User {
   email     String   @unique
   password  String
   name      String
-  phone     String?
-  role      String   @default("CUSTOMER") // CUSTOMER, DRIVER, ADMIN
+  phone     String?  @unique
+  role      String   @default("CUSTOMER") // CUSTOMER, DRIVER, ADMIN, RESTAURANT
+  locale    String   @default("ar") // ar | en
+  /// توكن FCM لإرسال الإشعارات من Firebase (لا يُعاد في الـ API للعميل)
+  fcmToken  String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   // Relations
-  orders    Order[]
-  driver    Driver?
+  orders                 Order[]
+  driver                 Driver?
+  reviews                Review[]
+  restaurant             Restaurant?
+  savedAddresses         SavedAddress[]
+  savedPaymentMethods    SavedPaymentMethod[]
+  notificationPreference NotificationPreference?
+  feedbacks              Feedback[]
+  surveyResponses        SurveyResponse[]
 
   @@map("users")
+}
+
+model SavedAddress {
+  id          String   @id @default(uuid())
+  userId      String
+  label       String
+  addressLine String
+  latitude    Float?
+  longitude   Float?
+  isDefault   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("saved_addresses")
+}
+
+model SavedPaymentMethod {
+  id        String   @id @default(uuid())
+  userId    String
+  label     String
+  last4     String
+  brand     String
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("saved_payment_methods")
+}
+
+model NotificationPreference {
+  id           String   @id @default(uuid())
+  userId       String   @unique
+  orderUpdates Boolean  @default(true)
+  promotions   Boolean  @default(true)
+  marketing    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notification_preferences")
+}
+
+model Feedback {
+  id        String   @id @default(uuid())
+  userId    String
+  subject   String?
+  message   String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("feedbacks")
+}
+
+model Survey {
+  id            String   @id @default(uuid())
+  title         String
+  description   String?
+  questionsJson String
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  responses SurveyResponse[]
+
+  @@map("surveys")
+}
+
+model SurveyResponse {
+  id          String   @id @default(uuid())
+  userId      String
+  surveyId    String
+  answersJson String
+  createdAt   DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  survey Survey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, surveyId])
+  @@map("survey_responses")
 }
 
 model Driver {
@@ -46,9 +141,10 @@ model Driver {
 model Zone {
   id          String  @id @default(uuid())
   name        String  @unique
-  minDistance Float   // in km
-  maxDistance Float   // in km
+  minDistance Float?  // in km (optional for polygon-based zones)
+  maxDistance Float?  // in km (optional for polygon-based zones)
   price       Float   // delivery price
+  polygon     String? // JSON array of {lat, lng} points for polygon zone
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -57,11 +153,135 @@ model Zone {
   @@map("zones")
 }
 
+model Category {
+  id          String      @id @default(uuid())
+  name        String      @unique
+  description String?
+  image       String?     // URL to category image
+  isActive    Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  // Relations
+  restaurants Restaurant[]
+
+  @@map("categories")
+}
+
+model Restaurant {
+  id          String      @id @default(uuid())
+  name        String
+  description String?
+  image       String?     // URL to restaurant image
+  phone       String?
+  email       String?
+  address     String?
+  latitude    Float?      // Restaurant location
+  longitude   Float?
+  rating      Float?      @default(0) // Average rating
+  isActive    Boolean     @default(true)
+  isOpen      Boolean     @default(true)
+  categoryId  String
+  commissionRate Float    @default(15.0) // Commission percentage (e.g., 15%)
+  userId      String?     @unique // Owner (user with role RESTAURANT)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  // Relations
+  category    Category    @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  owner       User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  orders      Order[]
+  menuItems   MenuItem[]
+  reviews     Review[]
+  transactions Transaction[]
+
+  @@map("restaurants")
+}
+
+model MenuItem {
+  id            String      @id @default(uuid())
+  restaurantId String
+  name          String
+  description   String?
+  image         String?     // URL to item image
+  price         Float
+  category      String?     // e.g., "Appetizer", "Main Course", "Dessert"
+  isAvailable   Boolean     @default(true)
+  isVegetarian  Boolean     @default(false)
+  isVegan       Boolean     @default(false)
+  preparationTime Int?      // in minutes
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  // Relations
+  restaurant    Restaurant  @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  orderItems    OrderItem[]
+
+  @@map("menu_items")
+}
+
+model OrderItem {
+  id          String   @id @default(uuid())
+  orderId     String
+  menuItemId  String
+  quantity    Int      @default(1)
+  price       Float    // Price at time of order
+  notes       String? // Special instructions
+
+  // Relations
+  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItem    MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Restrict)
+
+  @@map("order_items")
+}
+
+model Review {
+  id            String   @id @default(uuid())
+  orderId       String   @unique
+  restaurantId  String
+  customerId    String
+  rating        Int      // 1-5
+  comment       String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  restaurant    Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  customer      User       @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  order         Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("reviews")
+}
+
+model Coupon {
+  id            String    @id @default(uuid())
+  code          String    @unique
+  description   String?
+  discountType  String    // "PERCENTAGE" or "FIXED"
+  discountValue Float     // Percentage (0-100) or fixed amount
+  minOrderAmount Float?   // Minimum order amount to use coupon
+  maxDiscount   Float?    // Maximum discount amount (for percentage)
+  validFrom     DateTime
+  validUntil    DateTime
+  usageLimit    Int?      // Maximum number of uses (null = unlimited)
+  usedCount     Int       @default(0)
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  orders       Order[]
+
+  @@map("coupons")
+}
+
 model Order {
   id              String   @id @default(uuid())
   customerId      String
   driverId        String?
+  restaurantId    String?  // Restaurant for food orders
   zoneId          String?
+  couponId        String?  // Applied coupon
   status          String   @default("PENDING") // PENDING, ACCEPTED, ON_THE_WAY, DELIVERED, CANCELED
   
   // Location data
@@ -74,16 +294,49 @@ model Order {
   distance        Float?      // in km
   fare            Float?      // calculated fare
   
+  // Pricing
+  subtotal        Float       @default(0) // Sum of all items
+  tax             Float       @default(0) // Tax amount
+  discount        Float       @default(0) // Discount from coupon
+  total           Float       @default(0) // Final total (subtotal + tax - discount + fare)
+  commission      Float       @default(0) // Commission amount (calculated from restaurant commissionRate)
+  
   // Order details
   description     String?
+  paymentMethod   String?     // "CASH", "CARD", "ONLINE"
+  paymentStatus   String      @default("PENDING") // "PENDING", "PAID", "FAILED", "REFUNDED"
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
 
   // Relations
   customer        User        @relation(fields: [customerId], references: [id], onDelete: Cascade)
   driver          Driver?     @relation(fields: [driverId], references: [id], onDelete: SetNull)
+  restaurant      Restaurant? @relation(fields: [restaurantId], references: [id], onDelete: SetNull)
   zone            Zone?       @relation(fields: [zoneId], references: [id], onDelete: SetNull)
+  coupon          Coupon?     @relation(fields: [couponId], references: [id], onDelete: SetNull)
+  items           OrderItem[]
+  review          Review?
+  transactions    Transaction[]
 
   @@map("orders")
+}
+
+model Transaction {
+  id            String   @id @default(uuid())
+  orderId       String?  // If related to an order
+  restaurantId  String?  // If related to a restaurant
+  type          String   // "INCOME" (إيراد) or "EXPENSE" (مصروف)
+  category      String   // e.g., "ORDER_COMMISSION", "DELIVERY_FEE", "REFUND", "PAYOUT", etc.
+  amount        Float
+  description   String?
+  status        String   @default("PENDING") // "PENDING", "COMPLETED", "CANCELLED"
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  order         Order?    @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  restaurant    Restaurant? @relation(fields: [restaurantId], references: [id], onDelete: SetNull)
+
+  @@map("transactions")
 }
 

@@ -1,12 +1,15 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { OrdersService } from './orders.service';
 import { OrdersController } from './orders.controller';
 import { ZonesModule } from '../zones/zones.module';
+import { TransactionsModule } from '../transactions/transactions.module';
+import { RealtimeModule } from '../realtime/realtime.module';
 
 @Module({
-  imports: [ZonesModule],
+  imports: [ZonesModule, TransactionsModule, forwardRef(() => RealtimeModule)],
   controllers: [OrdersController],
   providers: [OrdersService],
+  exports: [OrdersService],
 })
 export class OrdersModule {}
 
