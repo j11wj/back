@@ -1,11 +1,43 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateAddressDto } from './dto/create-address.dto';
 import { UpdateAddressDto } from './dto/update-address.dto';
+import {
+  iraqMobileLookupCandidates,
+  normalizePhoneDigits,
+} from '../common/utils/phone-digits';
 
 @Injectable()
 export class AddressesService {
   constructor(private readonly prisma: PrismaService) {}
+
+  private normalizePhone(raw: string): string {
+    return normalizePhoneDigits(raw);
+  }
+
+  /** يعيد userId لعميل مسجّل برقم الهاتف */
+  async resolveCustomerId(rawPhone: string): Promise<string> {
+    const phone = this.normalizePhone(rawPhone);
+    if (phone.length < 8) {
+      throw new BadRequestException('رقم الهاتف غير صالح');
+    }
+    const keys = iraqMobileLookupCandidates(phone);
+    const user = await this.prisma.user.findFirst({
+      where: { phone: { in: keys }, role: 'CUSTOMER' },
+    });
+    if (!user) {
+      throw new NotFoundException('المستخدم غير موجود');
+    }
+    if (user.role !== 'CUSTOMER') {
+      throw new ForbiddenException('هذا المسار للعملاء فقط');
+    }
+    return user.id;
+  }
 
   async findAll(userId: string) {
     return this.prisma.savedAddress.findMany({

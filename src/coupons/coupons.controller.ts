@@ -25,6 +25,7 @@ import { UpdateCouponDto } from './dto/update-coupon.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
+import { Public } from '../common/decorators/public.decorator';
 
 @ApiTags('coupons')
 @Controller('coupons')
@@ -43,6 +44,7 @@ export class CouponsController {
     return this.couponsService.create(createCouponDto);
   }
 
+  @Public()
   @Get()
   @ApiOperation({ summary: 'Get all coupons' })
   @ApiQuery({ name: 'isActive', required: false, type: Boolean })
@@ -53,6 +55,7 @@ export class CouponsController {
     );
   }
 
+  @Public()
   @Get('code/:code')
   @ApiOperation({ summary: 'Get coupon by code' })
   @ApiParam({ name: 'code', description: 'Coupon code' })
@@ -62,6 +65,7 @@ export class CouponsController {
     return this.couponsService.findByCode(code);
   }
 
+  @Public()
   @Get(':id')
   @ApiOperation({ summary: 'Get coupon by ID' })
   @ApiParam({ name: 'id', description: 'Coupon ID' })

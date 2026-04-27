@@ -1,5 +1,16 @@
-import { IsString, IsNumber, IsOptional, IsBoolean, IsInt, Min } from 'class-validator';
+import {
+  IsString,
+  IsNumber,
+  IsOptional,
+  IsBoolean,
+  IsInt,
+  Min,
+  IsArray,
+  ValidateNested,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
+import { MenuOptionRowDto } from './menu-option-row.dto';
 
 export class CreateMenuItemDto {
   @ApiProperty({ description: 'Restaurant ID' })
@@ -50,5 +61,19 @@ export class CreateMenuItemDto {
   @IsInt()
   @Min(0)
   preparationTime?: number;
+
+  @ApiPropertyOptional({ type: [MenuOptionRowDto], description: 'صلصات مقترحة لهذا الطبق' })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => MenuOptionRowDto)
+  suggestedSauces?: MenuOptionRowDto[];
+
+  @ApiPropertyOptional({ type: [MenuOptionRowDto], description: 'أضافات مقترحة لهذا الطبق' })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => MenuOptionRowDto)
+  suggestedAddons?: MenuOptionRowDto[];
 }
 

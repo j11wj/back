@@ -12,6 +12,11 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RegisterDto } from './dto/register.dto';
 import { RegisterRestaurantDto } from './dto/register-restaurant.dto';
 import { LoginDto } from './dto/login.dto';
+import {
+  canonicalizeIraqMobileForStorage,
+  iraqMobileLookupCandidates,
+  normalizePhoneDigits,
+} from '../common/utils/phone-digits';
 import { LoginPhoneDto } from './dto/login-phone.dto';
 
 @Injectable()
@@ -100,6 +105,8 @@ export class AuthService {
         },
       });
 
+      const zoneForPool = await tx.zone.findFirst({ orderBy: { minDistance: 'asc' } });
+
       const restaurant = await tx.restaurant.create({
         data: {
           name: dto.restaurantName,
@@ -115,6 +122,7 @@ export class AuthService {
           isOpen: dto.isOpen ?? true,
           commissionRate: dto.commissionRate ?? 15,
           userId: user.id,
+          zoneId: zoneForPool?.id,
         },
         include: {
           category: {
@@ -203,20 +211,23 @@ export class AuthService {
       throw new BadRequestException('يرجى إدخال الاسم الكامل');
     }
 
-    let user = await this.prisma.user.findUnique({
-      where: { phone },
+    const phoneKeys = iraqMobileLookupCandidates(phone);
+    const phoneStored = canonicalizeIraqMobileForStorage(phone);
+
+    let user = await this.prisma.user.findFirst({
+      where: { phone: { in: phoneKeys } },
     });
 
     if (!user) {
       const hashedPassword = await bcrypt.hash(randomBytes(32).toString('hex'), 10);
-      const syntheticEmail = `phone_${phone}@meez.local`;
+      const syntheticEmail = `phone_${phoneStored}@meez.local`;
       try {
         user = await this.prisma.user.create({
           data: {
             email: syntheticEmail,
             password: hashedPassword,
             name,
-            phone,
+            phone: phoneStored,
             role: 'CUSTOMER',
           },
         });
@@ -252,8 +263,72 @@ export class AuthService {
     };
   }
 
+  /**
+   * للطلب بدون JWT: نفس تحقق login-phone + حفظ توكن FCM على المستخدم.
+   */
+  async ensureCustomerForOrder(phoneRaw: string, nameRaw: string, fcmTokenRaw: string) {
+    const phone = this.normalizePhone(phoneRaw);
+    const name = nameRaw.trim().replace(/\s+/g, ' ');
+    if (phone.length < 8) {
+      throw new BadRequestException('رقم الهاتف غير صالح');
+    }
+    if (name.length < 2) {
+      throw new BadRequestException('يرجى إدخال الاسم الكامل');
+    }
+    const tok = fcmTokenRaw.trim();
+    if (tok.length < 10) {
+      throw new BadRequestException('توكن الجهاز (FCM) غير صالح');
+    }
+
+    const phoneKeys = iraqMobileLookupCandidates(phone);
+    const phoneStored = canonicalizeIraqMobileForStorage(phone);
+
+    let user = await this.prisma.user.findFirst({
+      where: { phone: { in: phoneKeys } },
+    });
+
+    if (!user) {
+      const hashedPassword = await bcrypt.hash(randomBytes(32).toString('hex'), 10);
+      const syntheticEmail = `phone_${phoneStored}@meez.local`;
+      try {
+        user = await this.prisma.user.create({
+          data: {
+            email: syntheticEmail,
+            password: hashedPassword,
+            name,
+            phone: phoneStored,
+            role: 'CUSTOMER',
+            fcmToken: tok,
+          },
+        });
+      } catch (e: any) {
+        if (e?.code === 'P2002') {
+          throw new ConflictException('رقم الهاتف أو البريد مستخدم مسبقاً');
+        }
+        throw e;
+      }
+    } else {
+      if (user.role !== 'CUSTOMER') {
+        throw new UnauthorizedException(
+          'هذا الحساب مسجّل كمطعم أو سائق. استخدم طريقة الدخول المناسبة.',
+        );
+      }
+      const existingName = user.name.trim().replace(/\s+/g, ' ');
+      if (existingName !== name) {
+        throw new UnauthorizedException('الاسم لا يطابق الرقم المسجّل');
+      }
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { fcmToken: tok },
+      });
+      user = await this.prisma.user.findUniqueOrThrow({ where: { id: user.id } });
+    }
+
+    return user;
+  }
+
   private normalizePhone(raw: string): string {
-    return raw.replace(/\D/g, '');
+    return normalizePhoneDigits(raw);
   }
 
   private generateToken(userId: string, email: string, role: string): string {

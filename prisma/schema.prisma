@@ -82,6 +82,22 @@ model NotificationPreference {
   @@map("notification_preferences")
 }
 
+/// شرائح البانر في الصفحة الرئيسية (يُديرها الأدمن)
+model HomeSlider {
+  id         String   @id @default(uuid())
+  title      String
+  subtitle   String?
+  imageUrl   String
+  /// رابط اختياري (تطبيق/ويب) عند الضغط على الشريحة
+  actionUrl  String?
+  sortOrder  Int      @default(0)
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("home_sliders")
+}
+
 model Feedback {
   id        String   @id @default(uuid())
   userId    String
@@ -128,11 +144,18 @@ model Driver {
   licenseNumber String
   vehicleType   String
   isAvailable   Boolean  @default(true)
+  /// منطقة عمل السائق (عرض الطلبات المتاحة والإشعارات لنفس المنطقة)
+  zoneId        String?
+  /// آخر موقع معروف (يُحدَّث مع تحديثات الموقع عبر الـ WebSocket)
+  lastLatitude   Float?
+  lastLongitude  Float?
+  lastLocationAt DateTime?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
   // Relations
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  zone          Zone?    @relation(fields: [zoneId], references: [id], onDelete: SetNull)
   orders        Order[]
 
   @@map("drivers")
@@ -148,7 +171,10 @@ model Zone {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  orders     Order[]
+  pricingOrders Order[] @relation("OrderPricingZone")
+  poolOrders    Order[] @relation("OrderPoolZone")
+  drivers       Driver[]
+  restaurants   Restaurant[]
 
   @@map("zones")
 }
@@ -184,12 +210,15 @@ model Restaurant {
   categoryId  String
   commissionRate Float    @default(15.0) // Commission percentage (e.g., 15%)
   userId      String?     @unique // Owner (user with role RESTAURANT)
+  /// منطقة المطعم (مشاركة الطلبات المعلّقة مع السائقين والمطاعم في نفس المنطقة)
+  zoneId      String?
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
 
   // Relations
   category    Category    @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   owner       User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  zone        Zone?       @relation(fields: [zoneId], references: [id], onDelete: SetNull)
   orders      Order[]
   menuItems   MenuItem[]
   reviews     Review[]
@@ -206,6 +235,10 @@ model MenuItem {
   image         String?     // URL to item image
   price         Float
   category      String?     // e.g., "Appetizer", "Main Course", "Dessert"
+  /// JSON كنص (SQLite): [{"name":"...","price":1500}]
+  suggestedSauces String?
+  /// JSON كنص: [{"name":"...","price":2000}]
+  suggestedAddons String?
   isAvailable   Boolean     @default(true)
   isVegetarian  Boolean     @default(false)
   isVegan       Boolean     @default(false)
@@ -226,6 +259,8 @@ model OrderItem {
   menuItemId  String
   quantity    Int      @default(1)
   price       Float    // Price at time of order
+  /// مجموع أضافات هذا السطر (صلصات + إضافات مقترحة) بالدينار لكل السطر
+  extrasPrice Float    @default(0)
   notes       String? // Special instructions
 
   // Relations
@@ -281,6 +316,8 @@ model Order {
   driverId        String?
   restaurantId    String?  // Restaurant for food orders
   zoneId          String?
+  /// منطقة العرض: عادة منطقة المطعم؛ إن لم يوجد مطعم تُساوي منطقة التسعير (zoneId)
+  poolZoneId      String?
   couponId        String?  // Applied coupon
   status          String   @default("PENDING") // PENDING, ACCEPTED, ON_THE_WAY, DELIVERED, CANCELED
   
@@ -312,7 +349,8 @@ model Order {
   customer        User        @relation(fields: [customerId], references: [id], onDelete: Cascade)
   driver          Driver?     @relation(fields: [driverId], references: [id], onDelete: SetNull)
   restaurant      Restaurant? @relation(fields: [restaurantId], references: [id], onDelete: SetNull)
-  zone            Zone?       @relation(fields: [zoneId], references: [id], onDelete: SetNull)
+  zone            Zone?       @relation("OrderPricingZone", fields: [zoneId], references: [id], onDelete: SetNull)
+  poolZone        Zone?       @relation("OrderPoolZone", fields: [poolZoneId], references: [id], onDelete: SetNull)
   coupon          Coupon?     @relation(fields: [couponId], references: [id], onDelete: SetNull)
   items           OrderItem[]
   review          Review?

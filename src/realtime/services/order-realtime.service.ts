@@ -185,8 +185,9 @@ export class OrderRealtimeService {
         timestamp: new Date().toISOString(),
       });
 
-      // Notify all drivers about new available order
-      server.to('drivers').emit('new_order_available', {
+      const poolId = order.poolZoneId ?? order.zoneId;
+      const rest = order.restaurant;
+      const newOrderPayload = {
         orderId,
         order: {
           id: order.id,
@@ -197,18 +198,33 @@ export class OrderRealtimeService {
           distance: order.distance,
           fare: order.fare,
           description: order.description,
+          poolZoneId: order.poolZoneId ?? null,
+          zoneId: order.zoneId ?? null,
+          restaurant: rest
+            ? {
+                id: rest.id,
+                name: rest.name,
+                latitude: rest.latitude ?? null,
+                longitude: rest.longitude ?? null,
+                zoneId: rest.zoneId ?? null,
+              }
+            : null,
         },
         timestamp: new Date().toISOString(),
-      });
+      };
 
-      // Notify restaurant so they can print the receipt (full order with items)
-      if (order.restaurantId) {
-        server.to(`restaurant:${order.restaurantId}`).emit('restaurant_new_order', {
+      if (poolId) {
+        server.to(`zone:${poolId}:drivers`).emit('new_order_available', newOrderPayload);
+        server.to(`zone:${poolId}:restaurants`).emit('restaurant_new_order', {
           orderId,
           order,
           timestamp: new Date().toISOString(),
         });
-        this.logger.log(`Notified restaurant ${order.restaurantId} of new order ${orderId}`);
+        this.logger.log(
+          `Notified zone ${poolId} (drivers + restaurants) for new order ${orderId}`,
+        );
+      } else {
+        this.logger.warn(`Order ${orderId} has no pool/zone id; skipping zone broadcast`);
       }
 
       this.logger.log(`Notified about new order ${orderId}`);

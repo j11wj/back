@@ -12,6 +12,7 @@ import { OrderStatus } from '../common/types/order-status.type';
 import { UserRole } from '../common/types/user-role.type';
 import { TransactionsService } from '../transactions/transactions.service';
 import { TransactionType, TransactionCategory } from '../transactions/dto/create-transaction.dto';
+import { AuthService } from '../auth/auth.service';
 
 @Injectable()
 export class OrdersService {
@@ -19,9 +20,23 @@ export class OrdersService {
     private prisma: PrismaService,
     private zonesService: ZonesService,
     private transactionsService: TransactionsService,
+    private authService: AuthService,
   ) {}
 
-  async create(createOrderDto: CreateOrderDto, customerId: string) {
+  /** منطقة العرض المشتركة (قديم بدون poolZoneId يُعادل zoneId) */
+  private effectivePoolZoneId(order: {
+    poolZoneId: string | null;
+    zoneId: string | null;
+  }): string | null {
+    return order.poolZoneId ?? order.zoneId ?? null;
+  }
+
+  async create(createOrderDto: CreateOrderDto) {
+    const { id: customerId } = await this.authService.ensureCustomerForOrder(
+      createOrderDto.customerPhone,
+      createOrderDto.customerName,
+      createOrderDto.fcmToken,
+    );
     const { pickupLatitude, pickupLongitude, deliveryLatitude, deliveryLongitude, restaurantId, description, items, couponCode } =
       createOrderDto;
 
@@ -63,7 +78,8 @@ export class OrdersService {
             throw new BadRequestException(`Menu item ${menuItem.name} is not available`);
           }
 
-          subtotal += menuItem.price * item.quantity;
+          const extras = item.extrasPrice ?? 0;
+          subtotal += menuItem.price * item.quantity + extras;
         }
 
         // Calculate commission from restaurant commission rate
@@ -114,12 +130,16 @@ export class OrdersService {
     const tax = subtotal * 0.1; // 10% tax (can be made configurable)
     const total = subtotal + tax - discount + (fare || 0);
 
+    /** منطقة مشاركة الطلب (سائقون ومطاعم في نفس المنطقة يرونه) */
+    const poolZoneId = restaurant?.zoneId ?? zone.id;
+
     // Create order
     const order = await this.prisma.order.create({
       data: {
         customerId,
         restaurantId,
         zoneId: zone.id,
+        poolZoneId,
         couponId: couponCode ? (await this.prisma.coupon.findUnique({ where: { code: couponCode } }))?.id : null,
         pickupLatitude,
         pickupLongitude,
@@ -147,6 +167,7 @@ export class OrdersService {
               menuItemId: item.menuItemId,
               quantity: item.quantity,
               price: menuItem.price,
+              extrasPrice: item.extrasPrice ?? 0,
               notes: item.notes,
             };
           })),
@@ -162,6 +183,7 @@ export class OrdersService {
           },
         },
         zone: true,
+        poolZone: true,
         restaurant: {
           select: {
             id: true,
@@ -169,6 +191,9 @@ export class OrdersService {
             image: true,
             phone: true,
             address: true,
+            latitude: true,
+            longitude: true,
+            zoneId: true,
             category: {
               select: {
                 id: true,
@@ -215,19 +240,45 @@ export class OrdersService {
       const restaurant = await this.prisma.restaurant.findUnique({
         where: { userId },
       });
-      if (restaurant) {
-        where.restaurantId = restaurant.id;
-      } else {
+      if (!restaurant) {
         return [];
+      }
+      if (restaurant.zoneId) {
+        where.OR = [
+          { restaurantId: restaurant.id },
+          {
+            status: 'PENDING',
+            poolZoneId: restaurant.zoneId,
+          },
+          {
+            status: 'PENDING',
+            poolZoneId: null,
+            zoneId: restaurant.zoneId,
+          },
+        ];
+      } else {
+        where.restaurantId = restaurant.id;
       }
     } else if (userRole === 'DRIVER') {
       const driver = await this.prisma.driver.findUnique({
         where: { userId },
       });
-      if (driver) {
-        where.driverId = driver.id;
-      } else {
+      if (!driver) {
         return [];
+      }
+      /** السائق «محمّل» بطلب: لا يعرض له طلبات مجمّعة جديدة، فقط ما يخدمه */
+      if (!driver.isAvailable) {
+        where.driverId = driver.id;
+      } else if (driver.zoneId) {
+        where.OR = [
+          { driverId: driver.id },
+          {
+            status: 'PENDING',
+            OR: [{ poolZoneId: driver.zoneId }, { poolZoneId: null, zoneId: driver.zoneId }],
+          },
+        ];
+      } else {
+        where.driverId = driver.id;
       }
     }
     // Admin can see all orders
@@ -244,6 +295,7 @@ export class OrdersService {
           },
         },
         zone: true,
+        poolZone: true,
         restaurant: {
           select: {
             id: true,
@@ -251,6 +303,9 @@ export class OrdersService {
             image: true,
             phone: true,
             address: true,
+            latitude: true,
+            longitude: true,
+            zoneId: true,
             category: {
               select: {
                 id: true,
@@ -300,6 +355,7 @@ export class OrdersService {
           },
         },
         zone: true,
+        poolZone: true,
         restaurant: {
           select: {
             id: true,
@@ -307,6 +363,9 @@ export class OrdersService {
             image: true,
             phone: true,
             address: true,
+            latitude: true,
+            longitude: true,
+            zoneId: true,
             category: {
               select: {
                 id: true,
@@ -354,16 +413,36 @@ export class OrdersService {
       const driver = await this.prisma.driver.findUnique({
         where: { userId },
       });
-      if (driver && order.driverId !== driver.id) {
+      if (!driver) {
+        throw new ForbiddenException('You do not have access to this order');
+      }
+      const assigned = order.driverId === driver.id;
+      const poolId = this.effectivePoolZoneId(order);
+      const sameZonePending =
+        order.status === 'PENDING' &&
+        !!driver.zoneId &&
+        !!poolId &&
+        driver.zoneId === poolId;
+      if (!assigned && !sameZonePending) {
         throw new ForbiddenException('You do not have access to this order');
       }
     }
 
-    if (userRole === 'RESTAURANT' && order.restaurantId) {
+    if (userRole === 'RESTAURANT') {
       const restaurant = await this.prisma.restaurant.findUnique({
         where: { userId },
       });
-      if (!restaurant || order.restaurantId !== restaurant.id) {
+      if (!restaurant) {
+        throw new ForbiddenException('You do not have access to this order');
+      }
+      const own = order.restaurantId === restaurant.id;
+      const poolId = this.effectivePoolZoneId(order);
+      const zonePending =
+        order.status === 'PENDING' &&
+        !!restaurant.zoneId &&
+        !!poolId &&
+        restaurant.zoneId === poolId;
+      if (!own && !zonePending) {
         throw new ForbiddenException('You do not have access to this order');
       }
     }
@@ -408,54 +487,74 @@ export class OrdersService {
       throw new BadRequestException('Driver is not available');
     }
 
-    // Update order
-    const updatedOrder = await this.prisma.order.update({
-      where: { id: orderId },
-      data: {
-        driverId,
-        status: 'ACCEPTED',
-      },
-      include: {
-        customer: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            phone: true,
-          },
-        },
-        zone: true,
-        restaurant: {
-          select: {
-            id: true,
-            name: true,
-            image: true,
-            phone: true,
-            address: true,
-            category: {
-              select: {
-                id: true,
-                name: true,
-              },
-            },
-          },
-        },
-        driver: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-                phone: true,
-              },
-            },
-          },
-        },
-      },
-    });
+    const poolId = this.effectivePoolZoneId(order);
+    if (!driver.zoneId) {
+      throw new ForbiddenException('يجب ضبط منطقة عمل السائق قبل قبول الطلبات');
+    }
+    if (!poolId || driver.zoneId !== poolId) {
+      throw new ForbiddenException('لا يمكن قبول طلب خارج منطقة عملك');
+    }
 
-    return updatedOrder;
+    const orderInclude = {
+      customer: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          phone: true,
+        },
+      },
+      zone: true,
+      poolZone: true,
+      restaurant: {
+        select: {
+          id: true,
+          name: true,
+          image: true,
+          phone: true,
+          address: true,
+          latitude: true,
+          longitude: true,
+          zoneId: true,
+          category: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      },
+      driver: {
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              phone: true,
+            },
+          },
+        },
+      },
+    };
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.order.update({
+        where: { id: orderId },
+        data: {
+          driverId,
+          status: 'ACCEPTED',
+        },
+      });
+      await tx.driver.update({
+        where: { id: driverId },
+        data: { isAvailable: false },
+      });
+      return tx.order.findUniqueOrThrow({
+        where: { id: orderId },
+        include: orderInclude,
+      });
+    });
   }
 
   async updateStatus(
@@ -533,6 +632,9 @@ export class OrdersService {
             image: true,
             phone: true,
             address: true,
+            latitude: true,
+            longitude: true,
+            zoneId: true,
             category: {
               select: {
                 id: true,
@@ -566,6 +668,16 @@ export class OrdersService {
         },
       },
     });
+
+    if (
+      (status === 'DELIVERED' || status === 'CANCELED') &&
+      order.driverId
+    ) {
+      await this.prisma.driver.update({
+        where: { id: order.driverId },
+        data: { isAvailable: true },
+      });
+    }
 
     // If order is delivered and payment is completed, create financial transactions
     if (status === 'DELIVERED' && order.paymentStatus === 'PAID') {
@@ -624,10 +736,17 @@ export class OrdersService {
     }
   }
 
-  async getAvailableOrders() {
+  async getAvailableOrders(driverUserId: string) {
+    const driver = await this.prisma.driver.findUnique({
+      where: { userId: driverUserId },
+    });
+    if (!driver?.zoneId || !driver.isAvailable) {
+      return [];
+    }
     return this.prisma.order.findMany({
       where: {
         status: 'PENDING',
+        OR: [{ poolZoneId: driver.zoneId }, { poolZoneId: null, zoneId: driver.zoneId }],
       },
       include: {
         customer: {
@@ -639,6 +758,7 @@ export class OrdersService {
           },
         },
         zone: true,
+        poolZone: true,
         restaurant: {
           select: {
             id: true,
@@ -646,6 +766,9 @@ export class OrdersService {
             image: true,
             phone: true,
             address: true,
+            latitude: true,
+            longitude: true,
+            zoneId: true,
             category: {
               select: {
                 id: true,

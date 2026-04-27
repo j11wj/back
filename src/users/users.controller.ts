@@ -5,64 +5,101 @@ import {
   Get,
   Param,
   Patch,
+  Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
+import type { Request } from 'express';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiParam,
+  ApiQuery,
+} from '@nestjs/swagger';
 import { UsersService } from './users.service';
-import { UpdateProfileDto } from './dto/update-profile.dto';
-import { UpdateLocaleDto } from './dto/update-locale.dto';
 import { UpdateFcmTokenDto } from './dto/update-fcm-token.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
-import { GetUser } from '../common/decorators/get-user.decorator';
-import { UserRole } from '../common/types/user-role.type';
+import { Public } from '../common/decorators/public.decorator';
+import {
+  CurrentPhoneDto,
+  UpdateFcmTokenPublicDto,
+  UpdateLocalePublicDto,
+  UpdateProfilePublicDto,
+} from './dto/user-public.dto';
 
 @ApiTags('users')
-@ApiBearerAuth('JWT-auth')
 @Controller('users')
-@UseGuards(JwtAuthGuard)
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
+  @Public()
   @Get('profile')
-  @ApiOperation({ summary: 'Get current user profile' })
+  @ApiOperation({
+    summary: 'ملف العميل (بدون JWT) — يمرّر رقم الهاتف كمعرّف',
+  })
+  @ApiQuery({ name: 'phone', required: true, description: 'رقم هاتف العميل المسجل' })
   @ApiResponse({ status: 200, description: 'User profile' })
-  getProfile(@GetUser() user: any) {
-    return this.usersService.getProfile(user.id);
+  @ApiResponse({ status: 404, description: 'Not found' })
+  getProfile(@Query('phone') phone: string) {
+    return this.usersService.getProfileByPhone(phone);
   }
 
+  @Public()
   @Patch('profile')
-  @ApiOperation({ summary: 'Update current user profile (name, phone)' })
+  @ApiOperation({
+    summary: 'تحديث اسم/هاتف العميل (بدون JWT) — currentPhone للتعريف',
+  })
   @ApiResponse({ status: 200, description: 'Updated user profile' })
   @ApiResponse({ status: 409, description: 'Phone already in use' })
-  updateProfile(@GetUser() user: any, @Body() dto: UpdateProfileDto) {
-    return this.usersService.updateProfile(user.id, dto);
+  updateProfile(@Body() dto: UpdateProfilePublicDto) {
+    return this.usersService.updateProfilePublic(dto);
   }
 
+  @Public()
   @Patch('locale')
-  @ApiOperation({ summary: 'Update current user locale' })
-  updateLocale(@GetUser() user: any, @Body() dto: UpdateLocaleDto) {
-    return this.usersService.updateLocale(user.id, dto);
+  @ApiOperation({ summary: 'تحديث لغة الواجهة (بدون JWT)' })
+  updateLocale(@Body() dto: UpdateLocalePublicDto) {
+    return this.usersService.updateLocalePublic(dto);
   }
 
+  @Public()
   @Patch('fcm-token')
   @ApiOperation({
-    summary: 'تسجيل توكن FCM الخاص بالجهاز لإرسال الإشعارات عبر Firebase',
+    summary: 'تسجيل توكن FCM (بدون JWT) — currentPhone للتعريف',
   })
-  updateFcmToken(@GetUser() user: any, @Body() dto: UpdateFcmTokenDto) {
-    return this.usersService.updateFcmToken(user.id, dto);
+  updateFcmToken(@Body() dto: UpdateFcmTokenPublicDto) {
+    return this.usersService.updateFcmTokenPublic(dto);
   }
 
+  @Patch('me/fcm-token')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('CUSTOMER')
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({
+    summary: 'تسجيل توكن FCM للمستخدم الحالي (JWT — بدون رقم هاتف في الطلب)',
+  })
+  updateMyFcmToken(
+    @Req() req: Request & { user: { id: string } },
+    @Body() dto: UpdateFcmTokenDto,
+  ) {
+    return this.usersService.updateFcmToken(req.user.id, dto);
+  }
+
+  @Public()
   @Delete('profile')
-  @ApiOperation({ summary: 'Delete current user account' })
-  deleteProfile(@GetUser() user: any) {
-    return this.usersService.deleteProfile(user.id);
+  @ApiOperation({ summary: 'حذف حساب العميل (بدون JWT)' })
+  deleteProfile(@Body() dto: CurrentPhoneDto) {
+    return this.usersService.deleteProfilePublic(dto.currentPhone);
   }
 
   @Get()
-  @UseGuards(RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
+  @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'Get all users (Admin only)' })
   @ApiResponse({ status: 200, description: 'List of users' })
   findAll() {
@@ -70,8 +107,9 @@ export class UsersController {
   }
 
   @Get(':id')
-  @UseGuards(RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
+  @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'Get user by ID (Admin only)' })
   @ApiParam({ name: 'id', description: 'User ID' })
   @ApiResponse({ status: 200, description: 'User details' })
@@ -80,4 +118,3 @@ export class UsersController {
     return this.usersService.findOne(id);
   }
 }
-

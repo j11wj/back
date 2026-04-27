@@ -1,4 +1,17 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
+import {
+  BadRequestException,
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  UseGuards,
+  HttpCode,
+  HttpStatus,
+  Query,
+} from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiBody } from '@nestjs/swagger';
 import { ZonesService } from './zones.service';
 import { CreateZoneDto } from './dto/create-zone.dto';
@@ -32,6 +45,28 @@ export class ZonesController {
   @ApiResponse({ status: 200, description: 'List of zones' })
   findAll() {
     return this.zonesService.findAll();
+  }
+
+  @Public()
+  @Get('preview-fare')
+  @ApiOperation({
+    summary: 'معاينة أجرة التوصيل حسب المسافة بين المطعم وعنوان التوصيل',
+  })
+  @ApiResponse({ status: 200, description: 'distance, zone, fare' })
+  previewFare(
+    @Query('pickupLat') pickupLat: string,
+    @Query('pickupLng') pickupLng: string,
+    @Query('deliveryLat') deliveryLat: string,
+    @Query('deliveryLng') deliveryLng: string,
+  ) {
+    const pl = parseFloat(pickupLat);
+    const pg = parseFloat(pickupLng);
+    const dl = parseFloat(deliveryLat);
+    const dg = parseFloat(deliveryLng);
+    if ([pl, pg, dl, dg].some((n) => Number.isNaN(n))) {
+      throw new BadRequestException('إحداثيات غير صالحة');
+    }
+    return this.zonesService.calculateZoneAndFare(pl, pg, dl, dg);
   }
 
   @Public()

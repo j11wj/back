@@ -42,6 +42,8 @@ async function bootstrap() {
     .addTag('users', 'User management endpoints')
     .addTag('orders', 'Order management endpoints')
     .addTag('zones', 'Zone management endpoints')
+    .addTag('home-slider', 'شرائح الصفحة الرئيسية (سلايدر + إشعارات)')
+    .addTag('finance', 'تقارير مالية (مشرف)')
     .build();
 
   const document = SwaggerModule.createDocument(app, config);

@@ -1,5 +1,16 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsNumber, IsString, IsOptional, Min, Max, IsUUID, IsArray, ValidateNested, IsInt } from 'class-validator';
+import {
+  IsNumber,
+  IsString,
+  IsOptional,
+  Min,
+  Max,
+  IsUUID,
+  IsArray,
+  ValidateNested,
+  IsInt,
+  MinLength,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class OrderItemDto {
@@ -16,9 +27,34 @@ export class OrderItemDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @ApiPropertyOptional({
+    description: 'مجموع سعر الصلصات والأضافات لهذا السطر بالدينار (للسلة كاملة)',
+    minimum: 0,
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(500000)
+  extrasPrice?: number;
 }
 
 export class CreateOrderDto {
+  @ApiProperty({ description: 'رقم هاتف الزبون (أرقام فقط أو مع 0)' })
+  @IsString()
+  @MinLength(8)
+  customerPhone: string;
+
+  @ApiProperty({ description: 'الاسم الكامل للزبون (يطابق تسجيل الدخول بالهاتف)' })
+  @IsString()
+  @MinLength(2)
+  customerName: string;
+
+  @ApiProperty({ description: 'توكن FCM للجهاز لإشعارات حالة الطلب' })
+  @IsString()
+  @MinLength(10)
+  fcmToken: string;
+
   @ApiProperty({ example: 40.7128, description: 'Pickup location latitude' })
   @IsNumber()
   @Min(-90)

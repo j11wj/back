@@ -19,7 +19,9 @@ import { PaymentMethodsModule } from './payment-methods/payment-methods.module';
 import { NotificationPreferencesModule } from './notification-preferences/notification-preferences.module';
 import { FeedbackModule } from './feedback/feedback.module';
 import { SurveysModule } from './surveys/surveys.module';
-import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
+import { PushModule } from './push/push.module';
+import { SliderModule } from './slider/slider.module';
+import { FinanceModule } from './finance/finance.module';
 import { RolesGuard } from './common/guards/roles.guard';
 
 @Module({
@@ -45,12 +47,11 @@ import { RolesGuard } from './common/guards/roles.guard';
     NotificationPreferencesModule,
     FeedbackModule,
     SurveysModule,
+    PushModule,
+    SliderModule,
+    FinanceModule,
   ],
   providers: [
-    {
-      provide: APP_GUARD,
-      useClass: JwtAuthGuard,
-    },
     {
       provide: APP_GUARD,
       useClass: RolesGuard,

@@ -2,10 +2,52 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateMenuItemDto } from './dto/create-menu-item.dto';
 import { UpdateMenuItemDto } from './dto/update-menu-item.dto';
+import { MenuOptionRowDto } from './dto/menu-option-row.dto';
+
+type MenuItemRow = {
+  suggestedSauces: string | null;
+  suggestedAddons: string | null;
+  [key: string]: unknown;
+};
 
 @Injectable()
 export class MenuItemsService {
   constructor(private prisma: PrismaService) {}
+
+  private parseJsonOptionList(raw: string | null): { name: string; price: number }[] {
+    if (raw == null || raw === '') return [];
+    try {
+      const v = JSON.parse(raw) as unknown;
+      if (!Array.isArray(v)) return [];
+      return v
+        .filter((x) => x && typeof x === 'object')
+        .map((x) => ({
+          name: String((x as { name?: unknown }).name ?? ''),
+          price: Number((x as { price?: unknown }).price ?? 0),
+        }))
+        .filter((x) => x.name.length > 0);
+    } catch {
+      return [];
+    }
+  }
+
+  private mapMenuItemResponse<T extends MenuItemRow>(row: T): T {
+    return {
+      ...row,
+      suggestedSauces: this.parseJsonOptionList(row.suggestedSauces) as unknown as string | null,
+      suggestedAddons: this.parseJsonOptionList(row.suggestedAddons) as unknown as string | null,
+    } as T;
+  }
+
+  private encodeOptions(
+    sauces?: MenuOptionRowDto[],
+    addons?: MenuOptionRowDto[],
+  ): { suggestedSauces?: string; suggestedAddons?: string } {
+    const out: { suggestedSauces?: string; suggestedAddons?: string } = {};
+    if (sauces !== undefined) out.suggestedSauces = JSON.stringify(sauces);
+    if (addons !== undefined) out.suggestedAddons = JSON.stringify(addons);
+    return out;
+  }
 
   async create(createMenuItemDto: CreateMenuItemDto) {
     // Verify restaurant exists
@@ -17,8 +59,12 @@ export class MenuItemsService {
       throw new NotFoundException('Restaurant not found');
     }
 
-    return this.prisma.menuItem.create({
-      data: createMenuItemDto,
+    const { suggestedSauces, suggestedAddons, ...rest } = createMenuItemDto;
+    const created = await this.prisma.menuItem.create({
+      data: {
+        ...rest,
+        ...this.encodeOptions(suggestedSauces, suggestedAddons),
+      },
       include: {
         restaurant: {
           select: {
@@ -28,6 +74,7 @@ export class MenuItemsService {
         },
       },
     });
+    return this.mapMenuItemResponse(created as MenuItemRow);
   }
 
   async findAll(restaurantId?: string, isAvailable?: boolean) {
@@ -41,7 +88,7 @@ export class MenuItemsService {
       where.isAvailable = isAvailable;
     }
 
-    return this.prisma.menuItem.findMany({
+    const rows = await this.prisma.menuItem.findMany({
       where,
       include: {
         restaurant: {
@@ -55,6 +102,7 @@ export class MenuItemsService {
         name: 'asc',
       },
     });
+    return rows.map((r) => this.mapMenuItemResponse(r as MenuItemRow));
   }
 
   async findOne(id: string) {
@@ -75,7 +123,7 @@ export class MenuItemsService {
       throw new NotFoundException('Menu item not found');
     }
 
-    return item;
+    return this.mapMenuItemResponse(item as MenuItemRow);
   }
 
   async update(id: string, updateMenuItemDto: UpdateMenuItemDto) {
@@ -91,9 +139,17 @@ export class MenuItemsService {
       }
     }
 
-    return this.prisma.menuItem.update({
+    const { suggestedSauces, suggestedAddons, ...rest } = updateMenuItemDto;
+    const data: Record<string, unknown> = { ...rest };
+    if (suggestedSauces !== undefined) {
+      data.suggestedSauces = JSON.stringify(suggestedSauces);
+    }
+    if (suggestedAddons !== undefined) {
+      data.suggestedAddons = JSON.stringify(suggestedAddons);
+    }
+    const updated = await this.prisma.menuItem.update({
       where: { id },
-      data: updateMenuItemDto,
+      data: data as never,
       include: {
         restaurant: {
           select: {
@@ -103,6 +159,7 @@ export class MenuItemsService {
         },
       },
     });
+    return this.mapMenuItemResponse(updated as MenuItemRow);
   }
 
   async remove(id: string) {
@@ -125,12 +182,13 @@ export class MenuItemsService {
   async toggleAvailability(id: string) {
     const item = await this.findOne(id);
     
-    return this.prisma.menuItem.update({
+    const updated = await this.prisma.menuItem.update({
       where: { id },
       data: {
         isAvailable: !item.isAvailable,
       },
     });
+    return this.mapMenuItemResponse(updated as MenuItemRow);
   }
 }
 

@@ -11,6 +11,7 @@ import { ReviewsService } from './reviews.service';
 import { CreateReviewDto } from './dto/create-review.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { GetUser } from '../common/decorators/get-user.decorator';
+import { Public } from '../common/decorators/public.decorator';
 
 @ApiTags('reviews')
 @Controller('reviews')
@@ -27,6 +28,7 @@ export class ReviewsController {
     return this.reviewsService.create(user.id, createReviewDto);
   }
 
+  @Public()
   @Get()
   @ApiOperation({ summary: 'Get all reviews' })
   @ApiQuery({ name: 'restaurantId', required: false, type: String })
@@ -35,6 +37,7 @@ export class ReviewsController {
     return this.reviewsService.findAll(restaurantId);
   }
 
+  @Public()
   @Get(':id')
   @ApiOperation({ summary: 'Get review by ID' })
   @ApiParam({ name: 'id', description: 'Review ID' })

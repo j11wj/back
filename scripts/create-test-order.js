@@ -8,24 +8,11 @@
  */
 const API = process.env.API_URL || 'http://localhost:3000';
 
-async function login(email, password) {
-  const res = await fetch(`${API}/auth/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password }),
-  });
-  if (!res.ok) throw new Error(`Login failed: ${res.status} ${await res.text()}`);
-  const data = await res.json();
-  return data.access_token;
-}
-
-async function createOrder(token, body) {
+/** POST /orders عام (بدون JWT) — يتطلب customerPhone + customerName + fcmToken */
+async function createOrder(body) {
   const res = await fetch(`${API}/orders`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`Create order failed: ${res.status} ${await res.text()}`);
@@ -51,24 +38,24 @@ async function main() {
     const [item1, item2] = restaurant.menuItems;
     console.log('المطعم:', restaurant.name, '| أصناف:', restaurant.menuItems.map((m) => m.name).join(', '));
 
-    const token = await login('customer@test.com', '123456');
-    console.log('تم تسجيل دخول العميل');
-
     const orderBody = {
-      pickupLatitude: restaurant.latitude ?? 24.7136,
-      pickupLongitude: restaurant.longitude ?? 46.6753,
-      deliveryLatitude: 24.72,
-      deliveryLongitude: 46.68,
+      customerPhone: '07801234567',
+      customerName: 'زبون جنوب بابل',
+      fcmToken: 'script-test-fcm-token-placeholder-min-length-ok',
+      pickupLatitude: restaurant.latitude ?? 32.3,
+      pickupLongitude: restaurant.longitude ?? 44.68,
+      deliveryLatitude: (restaurant.latitude ?? 32.3) + 0.004,
+      deliveryLongitude: (restaurant.longitude ?? 44.68) + 0.003,
       restaurantId: restaurant.id,
       items: [
         { menuItemId: item1.id, quantity: 2 },
         { menuItemId: item2.id, quantity: 1 },
       ],
-      description: 'طلب تجريبي من السكربت',
+      description: 'طلب تجريبي من السكربت (بدون JWT)',
       paymentMethod: 'CASH',
     };
 
-    const order = await createOrder(token, orderBody);
+    const order = await createOrder(orderBody);
     console.log('تم إنشاء الطلب بنجاح');
     console.log('Order ID:', order.id);
     console.log('المجموع:', order.total);

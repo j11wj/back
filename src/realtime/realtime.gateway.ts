@@ -24,6 +24,8 @@ interface AuthenticatedSocket extends Socket {
   userId?: string;
   userRole?: UserRole;
   email?: string;
+  /** منطقة الغرف التي انضم إليها السائق/المطعم (لمغادرتها عند إعادة الربط لاحقاً إن لزم) */
+  joinedPoolZoneId?: string | null;
 }
 
 interface DriverLocationUpdatePayload {
@@ -116,21 +118,40 @@ export class RealtimeGateway
       // Join user-specific room
       await client.join(`user:${user.id}`);
 
-      // If driver, join driver room and set online status
+      // If driver, join zone pool room and set online status
       if (user.role === 'DRIVER') {
-        await client.join('drivers');
+        const driverRow = await this.prisma.driver.findUnique({
+          where: { userId: user.id },
+        });
+        if (driverRow?.zoneId) {
+          client.joinedPoolZoneId = driverRow.zoneId;
+          await client.join(`zone:${driverRow.zoneId}:drivers`);
+          this.logger.log(`Driver ${user.id} joined zone:${driverRow.zoneId}:drivers`);
+        } else {
+          this.logger.warn(`Driver ${user.id} has no zoneId; will not receive zone-scoped new orders`);
+        }
         await this.driverLocationService.setDriverOnline(user.id);
         this.logger.log(`Driver ${user.id} connected and marked online`);
       }
 
-      // If restaurant owner, join restaurant room for new order notifications
+      // If restaurant owner, join zone pool for new orders in the same service area
       if (user.role === 'RESTAURANT') {
         const restaurant = await this.prisma.restaurant.findFirst({
           where: { userId: user.id },
         });
         if (restaurant) {
           await client.join(`restaurant:${restaurant.id}`);
-          this.logger.log(`Restaurant ${restaurant.id} (${restaurant.name}) connected for orders`);
+          if (restaurant.zoneId) {
+            client.joinedPoolZoneId = restaurant.zoneId;
+            await client.join(`zone:${restaurant.zoneId}:restaurants`);
+            this.logger.log(
+              `Restaurant ${restaurant.id} (${restaurant.name}) joined zone:${restaurant.zoneId}:restaurants`,
+            );
+          } else {
+            this.logger.warn(
+              `Restaurant ${restaurant.id} has no zoneId; only legacy restaurant room is used`,
+            );
+          }
         }
       }
 
@@ -191,6 +212,20 @@ export class RealtimeGateway
         payload.lat,
         payload.lng,
       );
+
+      // حفظ آخر موقع في DB ليظهر في REST (طلبات، بروفايل) حتى بدون Redis
+      try {
+        await this.prisma.driver.update({
+          where: { userId: client.userId },
+          data: {
+            lastLatitude: payload.lat,
+            lastLongitude: payload.lng,
+            lastLocationAt: new Date(),
+          },
+        });
+      } catch (e) {
+        this.logger.warn(`Driver DB location sync skipped: ${e?.message || e}`);
+      }
 
       // If orderId is provided, broadcast to order room
       if (payload.orderId) {

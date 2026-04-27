@@ -6,7 +6,9 @@ import {
   Param,
   Patch,
   Post,
+  UseGuards,
 } from '@nestjs/common';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -20,6 +22,7 @@ import { UpdatePaymentMethodDto } from './dto/update-payment-method.dto';
 @ApiTags('payment-methods')
 @ApiBearerAuth('JWT-auth')
 @Controller('payment-methods')
+@UseGuards(JwtAuthGuard)
 export class PaymentMethodsController {
   constructor(private readonly paymentMethodsService: PaymentMethodsService) {}
 

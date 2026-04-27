@@ -1,5 +1,7 @@
 import {
+  BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -8,10 +10,24 @@ import { UserRole } from '../common/types/user-role.type';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { UpdateLocaleDto } from './dto/update-locale.dto';
 import { UpdateFcmTokenDto } from './dto/update-fcm-token.dto';
+import {
+  UpdateFcmTokenPublicDto,
+  UpdateLocalePublicDto,
+  UpdateProfilePublicDto,
+} from './dto/user-public.dto';
+import {
+  canonicalizeIraqMobileForStorage,
+  iraqMobileLookupCandidates,
+  normalizePhoneDigits,
+} from '../common/utils/phone-digits';
 
 @Injectable()
 export class UsersService {
   constructor(private prisma: PrismaService) {}
+
+  private normalizePhone(raw: string): string {
+    return normalizePhoneDigits(raw);
+  }
 
   async findAll(role?: UserRole) {
     const where = role ? { role } : {};
@@ -31,6 +47,14 @@ export class UsersService {
             licenseNumber: true,
             vehicleType: true,
             isAvailable: true,
+            zoneId: true,
+            lastLatitude: true,
+            lastLongitude: true,
+            lastLocationAt: true,
+            orders: {
+              where: { status: { in: ['ACCEPTED', 'ON_THE_WAY'] } },
+              select: { id: true, status: true },
+            },
           },
         },
       },
@@ -54,6 +78,14 @@ export class UsersService {
             licenseNumber: true,
             vehicleType: true,
             isAvailable: true,
+            zoneId: true,
+            lastLatitude: true,
+            lastLongitude: true,
+            lastLocationAt: true,
+            orders: {
+              where: { status: { in: ['ACCEPTED', 'ON_THE_WAY'] } },
+              select: { id: true, status: true },
+            },
           },
         },
       },
@@ -70,13 +102,96 @@ export class UsersService {
     return this.findOne(userId);
   }
 
+  /** ملف عميل بدون JWT — التعريف برقم الهاتف */
+  async getProfileByPhone(rawPhone: string) {
+    const phone = this.normalizePhone(rawPhone);
+    if (phone.length < 8) {
+      throw new BadRequestException('رقم الهاتف غير صالح');
+    }
+    const keys = iraqMobileLookupCandidates(phone);
+    const user = await this.prisma.user.findFirst({
+      where: { phone: { in: keys }, role: 'CUSTOMER' },
+    });
+    if (!user) {
+      throw new NotFoundException('المستخدم غير موجود');
+    }
+    if (user.role !== 'CUSTOMER') {
+      throw new ForbiddenException('هذا المسار للعملاء فقط');
+    }
+    return this.findOne(user.id);
+  }
+
+  async updateProfilePublic(dto: UpdateProfilePublicDto) {
+    const cur = this.normalizePhone(dto.currentPhone);
+    const curKeys = iraqMobileLookupCandidates(cur);
+    const user = await this.prisma.user.findFirst({
+      where: { phone: { in: curKeys }, role: 'CUSTOMER' },
+    });
+    if (!user) {
+      throw new NotFoundException('المستخدم غير موجود');
+    }
+    if (user.role !== 'CUSTOMER') {
+      throw new ForbiddenException('هذا المسار للعملاء فقط');
+    }
+    return this.updateProfile(user.id, {
+      name: dto.name,
+      phone: dto.phone,
+    });
+  }
+
+  async updateLocalePublic(dto: UpdateLocalePublicDto) {
+    const cur = this.normalizePhone(dto.currentPhone);
+    const curKeys = iraqMobileLookupCandidates(cur);
+    const user = await this.prisma.user.findFirst({
+      where: { phone: { in: curKeys }, role: 'CUSTOMER' },
+    });
+    if (!user) {
+      throw new NotFoundException('المستخدم غير موجود');
+    }
+    if (user.role !== 'CUSTOMER') {
+      throw new ForbiddenException('هذا المسار للعملاء فقط');
+    }
+    return this.updateLocale(user.id, { locale: dto.locale });
+  }
+
+  async updateFcmTokenPublic(dto: UpdateFcmTokenPublicDto) {
+    const cur = this.normalizePhone(dto.currentPhone);
+    const curKeys = iraqMobileLookupCandidates(cur);
+    const user = await this.prisma.user.findFirst({
+      where: { phone: { in: curKeys }, role: 'CUSTOMER' },
+    });
+    if (!user) {
+      throw new NotFoundException('المستخدم غير موجود');
+    }
+    if (user.role !== 'CUSTOMER') {
+      throw new ForbiddenException('هذا المسار للعملاء فقط');
+    }
+    return this.updateFcmToken(user.id, { fcmToken: dto.fcmToken });
+  }
+
+  async deleteProfilePublic(currentPhoneRaw: string) {
+    const cur = this.normalizePhone(currentPhoneRaw);
+    const curKeys = iraqMobileLookupCandidates(cur);
+    const user = await this.prisma.user.findFirst({
+      where: { phone: { in: curKeys }, role: 'CUSTOMER' },
+    });
+    if (!user) {
+      throw new NotFoundException('المستخدم غير موجود');
+    }
+    if (user.role !== 'CUSTOMER') {
+      throw new ForbiddenException('هذا المسار للعملاء فقط');
+    }
+    return this.deleteProfile(user.id);
+  }
+
   async updateProfile(userId: string, dto: UpdateProfileDto) {
     const normalizedName = dto.name.trim().replace(/\s+/g, ' ');
-    const normalizedPhone = dto.phone.trim();
+    const normalizedPhone = canonicalizeIraqMobileForStorage(this.normalizePhone(dto.phone));
 
+    const phoneConflictKeys = iraqMobileLookupCandidates(normalizedPhone);
     const phoneTaken = await this.prisma.user.findFirst({
       where: {
-        phone: normalizedPhone,
+        phone: { in: phoneConflictKeys },
         NOT: { id: userId },
       },
       select: { id: true },
