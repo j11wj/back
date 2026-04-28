@@ -6,7 +6,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -340,6 +340,8 @@ model Order {
   
   // Order details
   description     String?
+  /// Device token used when creating the order (for push notifications)
+  deviceToken     String?
   paymentMethod   String?     // "CASH", "CARD", "ONLINE"
   paymentStatus   String      @default("PENDING") // "PENDING", "PAID", "FAILED", "REFUNDED"
   createdAt       DateTime    @default(now())

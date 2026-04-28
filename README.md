@@ -1,6 +1,6 @@
 # Fast Delivery Backend API
 
-A comprehensive backend API for a fast delivery application built with NestJS, TypeScript, Prisma, and SQLite.
+A comprehensive backend API for a fast delivery application built with NestJS, TypeScript, Prisma, and PostgreSQL.
 
 ## Features
 
@@ -16,7 +16,7 @@ A comprehensive backend API for a fast delivery application built with NestJS, T
 
 - **Framework**: NestJS
 - **Language**: TypeScript
-- **Database**: SQLite (easily migratable to PostgreSQL)
+- **Database**: PostgreSQL
 - **ORM**: Prisma
 - **Authentication**: JWT (passport-jwt)
 - **Validation**: class-validator, class-transformer
@@ -96,10 +96,10 @@ npm install
 
 3. **Set up environment variables**
 
-Create a `.env` file in the root directory:
+Create a `.env` file in the root directory (or copy `.env.example`):
 
 ```env
-DATABASE_URL="file:./dev.db"
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/fast_delivery?schema=public"
 JWT_SECRET="your-super-secret-jwt-key-change-in-production"
 JWT_EXPIRES_IN="24h"
 PORT=3000
@@ -392,6 +392,7 @@ curl -X POST http://localhost:3000/orders \
 
 MIT
 
-#   m e e z _ b a c k _ e n d  
+#   m e e z _ b a c k _ e n d 
+ 
  # back
 # back

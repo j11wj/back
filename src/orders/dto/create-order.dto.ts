@@ -51,9 +51,16 @@ export class CreateOrderDto {
   customerName: string;
 
   @ApiProperty({ description: 'توكن FCM للجهاز لإشعارات حالة الطلب' })
+  @IsOptional()
   @IsString()
   @MinLength(10)
-  fcmToken: string;
+  fcmToken?: string;
+
+  @ApiPropertyOptional({ description: 'توكن الجهاز (بديل عن fcmToken)' })
+  @IsOptional()
+  @IsString()
+  @MinLength(10)
+  deviceToken?: string;
 
   @ApiProperty({ example: 40.7128, description: 'Pickup location latitude' })
   @IsNumber()

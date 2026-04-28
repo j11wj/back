@@ -32,10 +32,19 @@ export class OrdersService {
   }
 
   async create(createOrderDto: CreateOrderDto) {
+    const resolvedDeviceToken = (
+      createOrderDto.deviceToken ??
+      createOrderDto.fcmToken ??
+      ''
+    ).trim();
+    if (resolvedDeviceToken.length < 10) {
+      throw new BadRequestException('توكن الجهاز (FCM) مطلوب');
+    }
+
     const { id: customerId } = await this.authService.ensureCustomerForOrder(
       createOrderDto.customerPhone,
       createOrderDto.customerName,
-      createOrderDto.fcmToken,
+      resolvedDeviceToken,
     );
     const { pickupLatitude, pickupLongitude, deliveryLatitude, deliveryLongitude, restaurantId, description, items, couponCode } =
       createOrderDto;
@@ -155,6 +164,7 @@ export class OrdersService {
         description,
         status: 'PENDING',
         paymentMethod: createOrderDto.paymentMethod || 'CASH',
+        deviceToken: resolvedDeviceToken,
         items: items ? {
           create: await Promise.all(items.map(async (item) => {
             const menuItem = await this.prisma.menuItem.findUnique({

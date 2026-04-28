@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
@@ -129,13 +130,18 @@ async function main() {
   }
 
   const pass = await bcrypt.hash('123456', 10);
+  const adminPass = await bcrypt.hash('admin123', 10);
 
   await prisma.user.upsert({
     where: { email: 'admin@example.com' },
-    update: {},
+    update: {
+      password: adminPass,
+      name: 'مدير النظام',
+      role: 'ADMIN',
+    },
     create: {
       email: 'admin@example.com',
-      password: await bcrypt.hash('admin123', 10),
+      password: adminPass,
       name: 'مدير النظام',
       role: 'ADMIN',
     },
@@ -448,7 +454,7 @@ async function main() {
   }
 
   await prisma.$executeRawUnsafe(
-    `UPDATE orders SET poolZoneId = zoneId WHERE poolZoneId IS NULL AND zoneId IS NOT NULL`,
+    `UPDATE "orders" SET "poolZoneId" = "zoneId" WHERE "poolZoneId" IS NULL AND "zoneId" IS NOT NULL`,
   );
   await prisma.driver.updateMany({
     where: { zoneId: null },

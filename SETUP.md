@@ -19,7 +19,7 @@
    
    Or manually create `.env` with:
    ```env
-   DATABASE_URL="file:./dev.db"
+   DATABASE_URL="postgresql://postgres:postgres@localhost:5432/fast_delivery?schema=public"
    JWT_SECRET="your-super-secret-jwt-key-change-in-production"
    JWT_EXPIRES_IN="24h"
    PORT=3000
@@ -109,11 +109,11 @@ curl -X GET http://localhost:3000/orders \
 ## Database Management
 
 - **View database**: `npm run prisma:studio`
-- **Reset database**: Delete `prisma/dev.db` and run `npm run prisma:migrate` again
+- **Reset database**: Reset or recreate the PostgreSQL database, then run `npm run prisma:migrate` again
 - **Re-seed**: `npm run prisma:seed`
 
 ## Notes
 
-- The SQLite database file (`dev.db`) will be created in the `prisma` directory
-- To migrate to PostgreSQL, update `DATABASE_URL` in `.env` and change the provider in `prisma/schema.prisma` from `sqlite` to `postgresql`
+- Ensure PostgreSQL is running before starting the backend
+- Update `DATABASE_URL` in `.env` based on your PostgreSQL username/password/host/port/database
 
