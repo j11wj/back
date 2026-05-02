@@ -91,6 +91,15 @@ export class CreateRestaurantDto {
   categoryId: string;
 
   @ApiProperty({
+    example: 'zone-uuid',
+    description: 'Zone ID',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  zoneId?: string;
+
+  @ApiProperty({
     example: true,
     description: 'Restaurant active status',
     required: false,

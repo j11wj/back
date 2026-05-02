@@ -22,8 +22,10 @@ export class RestaurantsService {
       latitude,
       longitude,
       categoryId,
+      zoneId,
       isActive,
       isOpen,
+      commissionRate,
     } = createRestaurantDto;
 
     // Verify category exists
@@ -33,6 +35,15 @@ export class RestaurantsService {
 
     if (!category) {
       throw new NotFoundException(`Category with ID ${categoryId} not found`);
+    }
+
+    if (zoneId) {
+      const zone = await this.prisma.zone.findUnique({
+        where: { id: zoneId },
+      });
+      if (!zone) {
+        throw new NotFoundException(`Zone with ID ${zoneId} not found`);
+      }
     }
 
     return this.prisma.restaurant.create({
@@ -46,8 +57,10 @@ export class RestaurantsService {
         latitude,
         longitude,
         categoryId,
+        zoneId,
         isActive: isActive ?? true,
         isOpen: isOpen ?? true,
+        commissionRate: commissionRate ?? 15,
         rating: 0,
       },
       include: {

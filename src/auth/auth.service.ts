@@ -5,6 +5,7 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { randomBytes } from 'crypto';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
@@ -24,6 +25,7 @@ export class AuthService {
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
+    private configService: ConfigService,
   ) {}
 
   async register(registerDto: RegisterDto) {
@@ -333,6 +335,11 @@ export class AuthService {
 
   private generateToken(userId: string, email: string, role: string): string {
     const payload = { sub: userId, email, role };
+    if (role === 'ADMIN') {
+      return this.jwtService.sign(payload, {
+        expiresIn: this.configService.get<string>('JWT_EXPIRES_IN') || '24h',
+      });
+    }
     return this.jwtService.sign(payload);
   }
 

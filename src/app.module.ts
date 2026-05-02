@@ -22,6 +22,7 @@ import { SurveysModule } from './surveys/surveys.module';
 import { PushModule } from './push/push.module';
 import { SliderModule } from './slider/slider.module';
 import { FinanceModule } from './finance/finance.module';
+import { SearchModule } from './search/search.module';
 import { RolesGuard } from './common/guards/roles.guard';
 
 @Module({
@@ -50,6 +51,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     PushModule,
     SliderModule,
     FinanceModule,
+    SearchModule,
   ],
   providers: [
     {
