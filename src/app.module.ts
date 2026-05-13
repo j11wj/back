@@ -23,6 +23,7 @@ import { PushModule } from './push/push.module';
 import { SliderModule } from './slider/slider.module';
 import { FinanceModule } from './finance/finance.module';
 import { SearchModule } from './search/search.module';
+import { UploadModule } from './upload/upload.module';
 import { RolesGuard } from './common/guards/roles.guard';
 
 @Module({
@@ -52,6 +53,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     SliderModule,
     FinanceModule,
     SearchModule,
+    UploadModule,
   ],
   providers: [
     {
