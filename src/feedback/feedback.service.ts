@@ -15,4 +15,32 @@ export class FeedbackService {
       },
     });
   }
+
+  async findAll(role?: string, limit = 100) {
+    const feedbacks = await this.prisma.feedback.findMany({
+      take: limit,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        user: {
+          select: { id: true, name: true, phone: true, role: true },
+        },
+      },
+      ...(role
+        ? { where: { user: { role: role.toUpperCase() } } }
+        : {}),
+    });
+
+    return feedbacks.map(f => ({
+      id:        f.id,
+      subject:   f.subject,
+      message:   f.message,
+      createdAt: f.createdAt,
+      user: {
+        id:    f.user.id,
+        name:  f.user.name,
+        phone: f.user.phone,
+        role:  f.user.role,
+      },
+    }));
+  }
 }

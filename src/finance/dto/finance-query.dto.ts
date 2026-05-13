@@ -33,6 +33,11 @@ export class FinanceQueryDto {
   @IsString()
   restaurantId?: string;
 
+  @ApiPropertyOptional({ description: 'تصفية حسب السائق (driver.id)' })
+  @IsOptional()
+  @IsString()
+  driverId?: string;
+
   @ApiPropertyOptional({ description: 'PENDING, ACCEPTED, ...' })
   @IsOptional()
   @IsString()
@@ -52,7 +57,7 @@ export class FinanceQueryDto {
   @Max(10000)
   page?: number;
 
-  @ApiPropertyOptional({ default: 50, minimum: 1 })
+  @ApiPropertyOptional({ default: 50, minimum: 1, maximum: 200 })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
