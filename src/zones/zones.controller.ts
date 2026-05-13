@@ -16,6 +16,7 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiBody } 
 import { ZonesService } from './zones.service';
 import { CreateZoneDto } from './dto/create-zone.dto';
 import { UpdateZoneDto } from './dto/update-zone.dto';
+import { CalculateFareDto } from './dto/calculate-fare.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -67,6 +68,28 @@ export class ZonesController {
       throw new BadRequestException('إحداثيات غير صالحة');
     }
     return this.zonesService.calculateZoneAndFare(pl, pg, dl, dg);
+  }
+
+  @Public()
+  @Post('calculate-fare')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'حساب أجرة التوصيل الحقيقية — زون المطعم + زون الزبون',
+    description:
+      'إذا كان المطعم والزبون في نفس الزون يُحتسب سعر الزون مرة واحدة، وإذا كانا في زونين مختلفين يُجمع السعران.',
+  })
+  @ApiBody({ type: CalculateFareDto })
+  @ApiResponse({
+    status: 200,
+    description: 'fare, fareBreakdown, pickupZone, deliveryZone, distance',
+  })
+  calculateFare(@Body() dto: CalculateFareDto) {
+    return this.zonesService.calculateZoneAndFare(
+      dto.pickupLat,
+      dto.pickupLng,
+      dto.deliveryLat,
+      dto.deliveryLng,
+    );
   }
 
   @Public()

@@ -4,6 +4,27 @@ import { calculateDistance } from '../common/utils/distance.util';
 import { CreateZoneDto } from './dto/create-zone.dto';
 import { UpdateZoneDto } from './dto/update-zone.dto';
 
+/** نقطة جغرافية {lat, lng} */
+interface LatLng { lat: number; lng: number; }
+
+/**
+ * Ray-casting algorithm — يتحقق إذا كانت النقطة داخل المضلع.
+ * يُستخدم لتحديد الزون الجغرافي للمطعم أو الزبون.
+ */
+function isPointInPolygon(point: LatLng, polygon: LatLng[]): boolean {
+  const { lat: py, lng: px } = point;
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const { lat: iy, lng: ix } = polygon[i];
+    const { lat: jy, lng: jx } = polygon[j];
+    const intersect =
+      iy > py !== jy > py &&
+      px < ((jx - ix) * (py - iy)) / (jy - iy) + ix;
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
 @Injectable()
 export class ZonesService {
   constructor(private prisma: PrismaService) {}
@@ -120,8 +141,6 @@ export class ZonesService {
 
   /**
    * Find zone based on distance
-   * @param distance Distance in kilometers
-   * @returns Zone or null if distance exceeds all zones
    */
   async findZoneByDistance(distance: number) {
     const zone = await this.prisma.zone.findFirst({
@@ -130,17 +149,40 @@ export class ZonesService {
         maxDistance: { gte: distance },
       },
     });
-
     return zone;
   }
 
   /**
-   * Calculate distance and find appropriate zone
-   * @param pickupLat Latitude of pickup location
-   * @param pickupLon Longitude of pickup location
-   * @param deliveryLat Latitude of delivery location
-   * @param deliveryLon Longitude of delivery location
-   * @returns Object containing distance, zone, and fare
+   * يجد الزون الذي تقع فيه النقطة (lat, lng) عبر polygon أولاً،
+   * ثم يعود للبحث بالمسافة من نقطة مرجعية إذا لم يوجد polygon.
+   */
+  async findZoneByPoint(lat: number, lng: number, refLat?: number, refLng?: number) {
+    const allZones = await this.prisma.zone.findMany();
+    // 1. ابحث في الزونات التي عندها polygon
+    for (const z of allZones) {
+      if (!z.polygon) continue;
+      try {
+        const poly: LatLng[] = JSON.parse(z.polygon);
+        if (poly.length >= 3 && isPointInPolygon({ lat, lng }, poly)) {
+          return z;
+        }
+      } catch {
+        // polygon تالف — تجاهله
+      }
+    }
+    // 2. fallback: بحث بالمسافة من النقطة المرجعية (مثلاً المستودع/المركز)
+    if (refLat !== undefined && refLng !== undefined) {
+      const dist = calculateDistance(refLat, refLng, lat, lng);
+      return this.findZoneByDistance(dist);
+    }
+    return null;
+  }
+
+  /**
+   * يحسب سعر التوصيل الحقيقي بجمع سعر زون المطعم + سعر زون الزبون.
+   * - إذا كان الاثنان في نفس الزون → سعر الزون مرة واحدة.
+   * - إذا كانا في زونين مختلفين → مجموع السعرين.
+   * - إذا لم يُعثر على زون بالـ polygon → يعود للحساب بالمسافة الكلية (سلوك قديم).
    */
   async calculateZoneAndFare(
     pickupLat: number,
@@ -148,27 +190,46 @@ export class ZonesService {
     deliveryLat: number,
     deliveryLon: number,
   ) {
-    // Calculate distance using Haversine formula
-    const distance = calculateDistance(
-      pickupLat,
-      pickupLon,
-      deliveryLat,
-      deliveryLon,
-    );
+    const distance = calculateDistance(pickupLat, pickupLon, deliveryLat, deliveryLon);
 
-    // Find appropriate zone
+    // حاول تحديد زون المطعم وزون الزبون بالـ polygon
+    const pickupZone  = await this.findZoneByPoint(pickupLat,  pickupLon);
+    const deliveryZone = await this.findZoneByPoint(deliveryLat, deliveryLon);
+
+    // ─── الحالة 1: وُجد الزونان ───
+    if (pickupZone && deliveryZone) {
+      const samezone = pickupZone.id === deliveryZone.id;
+      const fare = samezone
+        ? pickupZone.price
+        : pickupZone.price + deliveryZone.price;
+
+      return {
+        distance,
+        pickupZone: { ...pickupZone, polygon: pickupZone.polygon ? JSON.parse(pickupZone.polygon) : null },
+        deliveryZone: { ...deliveryZone, polygon: deliveryZone.polygon ? JSON.parse(deliveryZone.polygon) : null },
+        zone: { ...pickupZone, polygon: pickupZone.polygon ? JSON.parse(pickupZone.polygon) : null }, // للتوافق مع الكود القديم
+        fare,
+        fareBreakdown: samezone
+          ? { pickupZonePrice: pickupZone.price, deliveryZonePrice: 0, note: 'نفس المنطقة' }
+          : { pickupZonePrice: pickupZone.price, deliveryZonePrice: deliveryZone.price, note: 'منطقتان مختلفتان' },
+      };
+    }
+
+    // ─── الحالة 2: fallback بالمسافة الكلية ───
     const zone = await this.findZoneByDistance(distance);
-
     if (!zone) {
       throw new NotFoundException(
-        `No zone found for distance ${distance} km. Maximum delivery distance is 10 km.`,
+        `لا توجد منطقة توصيل تغطي المسافة ${distance.toFixed(2)} كم.`,
       );
     }
 
     return {
       distance,
-      zone,
+      pickupZone: null,
+      deliveryZone: null,
+      zone: { ...zone, polygon: zone.polygon ? JSON.parse(zone.polygon) : null },
       fare: zone.price,
+      fareBreakdown: { pickupZonePrice: zone.price, deliveryZonePrice: 0, note: 'حساب بالمسافة الكلية' },
     };
   }
 }

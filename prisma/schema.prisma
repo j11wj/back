@@ -207,6 +207,7 @@ model Restaurant {
   rating      Float?      @default(0) // Average rating
   isActive    Boolean     @default(true)
   isOpen      Boolean     @default(true)
+  hasPromocode Boolean    @default(false) // هل يوجد كوبون/خصم نشط
   categoryId  String
   commissionRate Float    @default(15.0) // Commission percentage (e.g., 15%)
   userId      String?     @unique // Owner (user with role RESTAURANT)

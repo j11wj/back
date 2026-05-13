@@ -85,6 +85,10 @@ export class RestaurantsService {
     isActive?: boolean,
     isOpen?: boolean,
     search?: string,
+    hasPromocode?: boolean,
+    sortBy?: string,
+    userLat?: number,
+    userLng?: number,
   ) {
     const where: any = {};
 
@@ -95,15 +99,18 @@ export class RestaurantsService {
     if (isActive !== undefined) {
       where.isActive = isActive;
     } else {
-      where.isActive = true; // Default to active only
+      where.isActive = true;
     }
 
     if (isOpen !== undefined) {
       where.isOpen = isOpen;
     }
 
+    if (hasPromocode === true) {
+      where.hasPromocode = true;
+    }
+
     if (search) {
-      // SQLite: avoid mode: 'insensitive' (not supported); contains uses LIKE
       where.OR = [
         { name: { contains: search } },
         { description: { contains: search } },
@@ -111,7 +118,7 @@ export class RestaurantsService {
       ];
     }
 
-    return this.prisma.restaurant.findMany({
+    const restaurants = await this.prisma.restaurant.findMany({
       where,
       include: {
         category: {
@@ -132,6 +139,27 @@ export class RestaurantsService {
         { name: 'asc' },
       ],
     });
+
+    // ترتيب حسب القرب إذا توفرت إحداثيات المستخدم
+    if (sortBy === 'nearby' && userLat !== undefined && userLng !== undefined) {
+      const toRad = (d: number) => (d * Math.PI) / 180;
+      const dist = (lat: number, lng: number) => {
+        const R = 6371;
+        const dLat = toRad(lat - userLat);
+        const dLng = toRad(lng - userLng);
+        const a =
+          Math.sin(dLat / 2) ** 2 +
+          Math.cos(toRad(userLat)) * Math.cos(toRad(lat)) * Math.sin(dLng / 2) ** 2;
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      };
+      restaurants.sort((a, b) => {
+        const da = a.latitude != null && a.longitude != null ? dist(a.latitude, a.longitude) : Infinity;
+        const db = b.latitude != null && b.longitude != null ? dist(b.latitude, b.longitude) : Infinity;
+        return da - db;
+      });
+    }
+
+    return restaurants;
   }
 
   async findOne(id: string) {

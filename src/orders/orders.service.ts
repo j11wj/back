@@ -128,19 +128,22 @@ export class OrdersService {
     }
 
     // Calculate distance, zone, and fare
-    const { distance, zone, fare } =
-      await this.zonesService.calculateZoneAndFare(
+    const fareResult = await this.zonesService.calculateZoneAndFare(
         pickupLatitude,
         pickupLongitude,
         deliveryLatitude,
         deliveryLongitude,
       );
+    const { distance, zone, fare } = fareResult;
 
     const tax = subtotal * 0.1; // 10% tax (can be made configurable)
     const total = subtotal + tax - discount + (fare || 0);
 
-    /** منطقة مشاركة الطلب (سائقون ومطاعم في نفس المنطقة يرونه) */
-    const poolZoneId = restaurant?.zoneId ?? zone.id;
+    /** منطقة مشاركة الطلب: زون المطعم أولاً، ثم زون الاستلام (pickup)، ثم زون التسعير */
+    const poolZoneId =
+      restaurant?.zoneId ??
+      fareResult.pickupZone?.id ??
+      zone.id;
 
     // Create order
     const order = await this.prisma.order.create({

@@ -107,7 +107,11 @@ export class AuthService {
         },
       });
 
-      const zoneForPool = await tx.zone.findFirst({ orderBy: { minDistance: 'asc' } });
+      let resolvedZoneId = dto.zoneId;
+      if (!resolvedZoneId) {
+        const zoneForPool = await tx.zone.findFirst({ orderBy: { minDistance: 'asc' } });
+        resolvedZoneId = zoneForPool?.id;
+      }
 
       const restaurant = await tx.restaurant.create({
         data: {
@@ -124,7 +128,7 @@ export class AuthService {
           isOpen: dto.isOpen ?? true,
           commissionRate: dto.commissionRate ?? 15,
           userId: user.id,
-          zoneId: zoneForPool?.id,
+          zoneId: resolvedZoneId,
         },
         include: {
           category: {

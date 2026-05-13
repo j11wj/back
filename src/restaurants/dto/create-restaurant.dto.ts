@@ -16,115 +16,70 @@ export class CreateRestaurantDto {
   @MinLength(2)
   name: string;
 
-  @ApiProperty({
-    example: 'Best pizza in town',
-    description: 'Restaurant description',
-    required: false,
-  })
+  @ApiProperty({ required: false })
   @IsOptional()
   @IsString()
   description?: string;
 
-  @ApiProperty({
-    example: 'https://example.com/restaurant.jpg',
-    description: 'Restaurant image URL',
-    required: false,
-  })
+  @ApiProperty({ required: false })
   @IsOptional()
   @IsString()
   image?: string;
 
-  @ApiProperty({
-    example: '+1234567890',
-    description: 'Restaurant phone number',
-    required: false,
-  })
+  @ApiProperty({ required: false })
   @IsOptional()
   @IsString()
   phone?: string;
 
-  @ApiProperty({
-    example: 'contact@pizzapalace.com',
-    description: 'Restaurant email',
-    required: false,
-  })
+  @ApiProperty({ required: false })
   @IsOptional()
   @IsEmail()
   email?: string;
 
-  @ApiProperty({
-    example: '123 Main St, City',
-    description: 'Restaurant address',
-    required: false,
-  })
+  @ApiProperty({ required: false })
   @IsOptional()
   @IsString()
   address?: string;
 
-  @ApiProperty({
-    example: 40.7128,
-    description: 'Restaurant latitude',
-    required: false,
-  })
+  @ApiProperty({ required: false })
   @IsOptional()
   @IsNumber()
   @Min(-90)
   @Max(90)
   latitude?: number;
 
-  @ApiProperty({
-    example: -74.0060,
-    description: 'Restaurant longitude',
-    required: false,
-  })
+  @ApiProperty({ required: false })
   @IsOptional()
   @IsNumber()
   @Min(-180)
   @Max(180)
   longitude?: number;
 
-  @ApiProperty({
-    example: 'category-uuid',
-    description: 'Category ID',
-  })
+  @ApiProperty({ example: 'category-uuid' })
   @IsString()
   categoryId: string;
 
-  @ApiProperty({
-    example: 'zone-uuid',
-    description: 'Zone ID',
-    required: false,
-  })
+  @ApiProperty({ required: false })
   @IsOptional()
   @IsString()
   zoneId?: string;
 
-  @ApiProperty({
-    example: true,
-    description: 'Restaurant active status',
-    required: false,
-    default: true,
-  })
+  @ApiProperty({ required: false, default: true })
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
 
-  @ApiProperty({
-    example: true,
-    description: 'Restaurant open status',
-    required: false,
-    default: true,
-  })
+  @ApiProperty({ required: false, default: true })
   @IsOptional()
   @IsBoolean()
   isOpen?: boolean;
 
-  @ApiProperty({
-    example: 15.0,
-    description: 'Commission rate percentage (e.g., 15 for 15%)',
-    required: false,
-    default: 15.0,
-  })
+  @ApiProperty({ required: false, default: false })
+  @IsOptional()
+  @IsBoolean()
+  hasPromocode?: boolean;
+
+  @ApiProperty({ required: false, default: 15 })
   @IsOptional()
   @IsNumber()
   @Min(0)
@@ -132,3 +87,91 @@ export class CreateRestaurantDto {
   commissionRate?: number;
 }
 
+/** يُستخدم من الداشبورد: ينشئ مطعم + حساب مستخدم RESTAURANT دفعة واحدة */
+export class CreateRestaurantWithAccountDto {
+  // ── بيانات صاحب الحساب ──
+  @ApiProperty({ example: 'owner@restaurant.com' })
+  @IsEmail()
+  ownerEmail: string;
+
+  @ApiProperty({ example: 'password123', minLength: 6 })
+  @IsString()
+  @MinLength(6)
+  ownerPassword: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  ownerName?: string;
+
+  // ── بيانات المطعم ──
+  @ApiProperty({ example: 'مطعم الذوق الرفيع' })
+  @IsString()
+  @MinLength(2)
+  name: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  image?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  phone?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsEmail()
+  email?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  address?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsNumber()
+  @Min(-90)
+  @Max(90)
+  latitude?: number;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsNumber()
+  @Min(-180)
+  @Max(180)
+  longitude?: number;
+
+  @ApiProperty({ example: 'category-uuid' })
+  @IsString()
+  categoryId: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  zoneId?: string;
+
+  @ApiProperty({ required: false, default: true })
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
+
+  @ApiProperty({ required: false, default: true })
+  @IsOptional()
+  @IsBoolean()
+  isOpen?: boolean;
+
+  @ApiProperty({ required: false, default: 15 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  commissionRate?: number;
+}

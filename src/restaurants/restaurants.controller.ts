@@ -23,16 +23,21 @@ import {
 } from '@nestjs/swagger';
 import { RestaurantsService } from './restaurants.service';
 import { CreateRestaurantDto } from './dto/create-restaurant.dto';
+import { CreateRestaurantWithAccountDto } from './dto/create-restaurant.dto';
 import { UpdateRestaurantDto } from './dto/update-restaurant.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { Public } from '../common/decorators/public.decorator';
+import { AuthService } from '../auth/auth.service';
 
 @ApiTags('restaurants')
 @Controller('restaurants')
 export class RestaurantsController {
-  constructor(private readonly restaurantsService: RestaurantsService) {}
+  constructor(
+    private readonly restaurantsService: RestaurantsService,
+    private readonly authService: AuthService,
+  ) {}
 
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -47,25 +52,66 @@ export class RestaurantsController {
     return this.restaurantsService.create(createRestaurantDto);
   }
 
+  /** إنشاء مطعم + حساب مستخدم RESTAURANT دفعة واحدة (من الداشبورد) */
+  @Post('with-account')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'إنشاء مطعم وحساب صاحبه معاً (Admin only)' })
+  @ApiResponse({ status: 201, description: 'تم إنشاء المطعم والحساب' })
+  createWithAccount(@Body() dto: CreateRestaurantWithAccountDto) {
+    return this.authService.registerRestaurant({
+      email:          dto.ownerEmail,
+      password:       dto.ownerPassword,
+      name:           dto.ownerName ?? dto.name,
+      phone:          dto.phone,
+      restaurantName: dto.name,
+      description:    dto.description,
+      image:          dto.image,
+      restaurantPhone: dto.phone,
+      address:        dto.address,
+      latitude:       dto.latitude,
+      longitude:      dto.longitude,
+      categoryId:     dto.categoryId,
+      zoneId:         dto.zoneId,
+      isActive:       dto.isActive,
+      isOpen:         dto.isOpen,
+      commissionRate: dto.commissionRate,
+    });
+  }
+
   @Public()
   @Get()
   @ApiOperation({ summary: 'Get all restaurants' })
-  @ApiQuery({ name: 'categoryId', required: false, type: String, description: 'Filter by category ID' })
-  @ApiQuery({ name: 'isActive', required: false, type: Boolean, description: 'Filter by active status' })
-  @ApiQuery({ name: 'isOpen', required: false, type: Boolean, description: 'Filter by open status' })
-  @ApiQuery({ name: 'search', required: false, type: String, description: 'Search by name, description, or address' })
+  @ApiQuery({ name: 'categoryId', required: false, type: String })
+  @ApiQuery({ name: 'isActive', required: false, type: Boolean })
+  @ApiQuery({ name: 'isOpen', required: false, type: Boolean })
+  @ApiQuery({ name: 'search', required: false, type: String })
+  @ApiQuery({ name: 'hasPromocode', required: false, type: Boolean, description: 'فلتر المطاعم التي عندها خصم/كوبون' })
+  @ApiQuery({ name: 'sortBy', required: false, type: String, description: 'nearby = ترتيب حسب القرب' })
+  @ApiQuery({ name: 'userLat', required: false, type: Number, description: 'خط عرض الزبون (لفلتر القرب)' })
+  @ApiQuery({ name: 'userLng', required: false, type: Number, description: 'خط طول الزبون (لفلتر القرب)' })
   @ApiResponse({ status: 200, description: 'List of restaurants' })
   findAll(
     @Query('categoryId') categoryId?: string,
     @Query('isActive') isActive?: string,
     @Query('isOpen') isOpen?: string,
     @Query('search') search?: string,
+    @Query('hasPromocode') hasPromocode?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('userLat') userLat?: string,
+    @Query('userLng') userLng?: string,
   ) {
     return this.restaurantsService.findAll(
       categoryId,
       isActive === 'true' ? true : isActive === 'false' ? false : undefined,
       isOpen === 'true' ? true : isOpen === 'false' ? false : undefined,
       search,
+      hasPromocode === 'true' ? true : undefined,
+      sortBy,
+      userLat ? parseFloat(userLat) : undefined,
+      userLng ? parseFloat(userLng) : undefined,
     );
   }
 

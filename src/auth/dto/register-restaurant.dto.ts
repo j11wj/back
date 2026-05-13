@@ -75,6 +75,11 @@ export class RegisterRestaurantDto {
   @Max(180)
   longitude?: number;
 
+  @ApiProperty({ example: 'zone-uuid', description: 'منطقة المطعم', required: false })
+  @IsOptional()
+  @IsString()
+  zoneId?: string;
+
   @ApiProperty({ example: true, description: 'المطعم مفعّل', required: false, default: true })
   @IsOptional()
   @IsBoolean()
