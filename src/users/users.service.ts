@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { PushService } from '../push/push.service';
 import { UserRole } from '../common/types/user-role.type';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { UpdateLocaleDto } from './dto/update-locale.dto';
@@ -23,7 +24,10 @@ import {
 
 @Injectable()
 export class UsersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private pushService: PushService,
+  ) {}
 
   private normalizePhone(raw: string): string {
     return normalizePhoneDigits(raw);
@@ -234,9 +238,80 @@ export class UsersService {
     return { ok: true, message: 'تم تسجيل توكن الإشعارات' };
   }
 
+  async updateDriverInfo(userId: string, dto: { zoneId?: string; fcmToken?: string }) {
+    // Update FCM token on user record
+    if (dto.fcmToken?.trim()) {
+      await this.prisma.user.update({
+        where: { id: userId },
+        data: { fcmToken: dto.fcmToken.trim() },
+      });
+    }
+
+    // Update driver zone
+    if (dto.zoneId) {
+      const zone = await this.prisma.zone.findUnique({ where: { id: dto.zoneId } });
+      if (!zone) throw new NotFoundException('الزون غير موجود');
+
+      await this.prisma.driver.upsert({
+        where: { userId },
+        update: { zoneId: dto.zoneId },
+        create: {
+          userId,
+          licenseNumber: 'PENDING',
+          vehicleType: 'motorcycle',
+          isAvailable: true,
+          zoneId: dto.zoneId,
+        },
+      });
+    }
+
+    const driver = await this.prisma.driver.findUnique({
+      where: { userId },
+      select: { id: true, zoneId: true, isAvailable: true },
+    });
+
+    return { ok: true, driver };
+  }
+
   async deleteProfile(userId: string) {
     await this.prisma.user.delete({ where: { id: userId } });
     return { message: 'تم حذف الحساب بنجاح' };
+  }
+
+  async sendAdminNotification(dto: {
+    title: string;
+    body: string;
+    userId?: string;
+  }) {
+    const { title, body, userId } = dto;
+    if (!title?.trim() || !body?.trim()) {
+      throw new BadRequestException('العنوان والنص مطلوبان');
+    }
+
+    // إرسال لمستخدم معين
+    if (userId) {
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { fcmToken: true, name: true },
+      });
+      if (!user) throw new NotFoundException('المستخدم غير موجود');
+      if (!user.fcmToken) return { sent: 0, message: 'المستخدم ليس لديه توكن FCM' };
+
+      const ok = await this.pushService.sendToToken(user.fcmToken, {
+        title,
+        body,
+        data: { type: 'admin_notification' },
+      });
+      return { sent: ok ? 1 : 0, failed: ok ? 0 : 1 };
+    }
+
+    // إرسال للكل
+    const result = await this.pushService.notifyCustomersPromo({
+      title,
+      body,
+      data: { type: 'admin_notification' },
+    });
+    return result;
   }
 }
 

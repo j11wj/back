@@ -3,8 +3,11 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   Patch,
+  Post,
   Query,
   Req,
   UseGuards,
@@ -76,17 +79,28 @@ export class UsersController {
   }
 
   @Patch('me/fcm-token')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('CUSTOMER')
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({
-    summary: 'تسجيل توكن FCM للمستخدم الحالي (JWT — بدون رقم هاتف في الطلب)',
+    summary: 'تسجيل توكن FCM للمستخدم الحالي (JWT — لأي دور)',
   })
   updateMyFcmToken(
     @Req() req: Request & { user: { id: string } },
     @Body() dto: UpdateFcmTokenDto,
   ) {
     return this.usersService.updateFcmToken(req.user.id, dto);
+  }
+
+  @Patch('me/driver-info')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('DRIVER')
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'تحديث زون السائق الحالي (JWT — DRIVER فقط)' })
+  updateDriverInfo(
+    @Req() req: Request & { user: { id: string } },
+    @Body() dto: { zoneId?: string; fcmToken?: string },
+  ) {
+    return this.usersService.updateDriverInfo(req.user.id, dto);
   }
 
   @Public()
@@ -116,5 +130,18 @@ export class UsersController {
   @ApiResponse({ status: 404, description: 'User not found' })
   findOne(@Param('id') id: string) {
     return this.usersService.findOne(id);
+  }
+
+  @Post('send-notification')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'إرسال إشعار FCM (Admin) — لمستخدم معين أو لكل العملاء' })
+  @ApiResponse({ status: 200, description: 'نتيجة الإرسال' })
+  sendNotification(
+    @Body() dto: { title: string; body: string; userId?: string },
+  ) {
+    return this.usersService.sendAdminNotification(dto);
   }
 }

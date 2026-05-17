@@ -43,6 +43,8 @@ export class AuthService {
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    const finalRole = role || 'CUSTOMER';
+
     // Create user
     const user = await this.prisma.user.create({
       data: {
@@ -50,7 +52,7 @@ export class AuthService {
         password: hashedPassword,
         name,
         phone,
-        role: role || 'CUSTOMER',
+        role: finalRole,
       },
       select: {
         id: true,
@@ -62,11 +64,34 @@ export class AuthService {
       },
     });
 
+    // Auto-create Driver record for DRIVER role
+    let driver: any = null;
+    if (finalRole === 'DRIVER') {
+      // Assign default zone (first zone in DB)
+      const defaultZone = await this.prisma.zone.findFirst({ orderBy: { createdAt: 'asc' } });
+      driver = await this.prisma.driver.create({
+        data: {
+          userId: user.id,
+          licenseNumber: 'PENDING',
+          vehicleType: 'motorcycle',
+          isAvailable: true,
+          zoneId: defaultZone?.id ?? null,
+        },
+        select: {
+          id: true,
+          zoneId: true,
+          isAvailable: true,
+          vehicleType: true,
+        },
+      });
+    }
+
     // Generate JWT token
     const token = this.generateToken(user.id, user.email, user.role);
 
     return {
       user,
+      driver,
       access_token: token,
     };
   }
@@ -126,6 +151,7 @@ export class AuthService {
           categoryId: dto.categoryId,
           isActive: dto.isActive ?? true,
           isOpen: dto.isOpen ?? true,
+          hasPromocode: dto.hasPromocode ?? false,
           commissionRate: dto.commissionRate ?? 15,
           userId: user.id,
           zoneId: resolvedZoneId,
@@ -198,6 +224,28 @@ export class AuthService {
       if (restaurant) {
         response.restaurant = restaurant;
       }
+    }
+
+    if (user.role === 'DRIVER') {
+      let driver = await this.prisma.driver.findUnique({
+        where: { userId: user.id },
+        select: { id: true, zoneId: true, isAvailable: true, vehicleType: true },
+      });
+      // Auto-create Driver record if missing (legacy accounts)
+      if (!driver) {
+        const defaultZone = await this.prisma.zone.findFirst({ orderBy: { createdAt: 'asc' } });
+        driver = await this.prisma.driver.create({
+          data: {
+            userId: user.id,
+            licenseNumber: 'PENDING',
+            vehicleType: 'motorcycle',
+            isAvailable: true,
+            zoneId: defaultZone?.id ?? null,
+          },
+          select: { id: true, zoneId: true, isAvailable: true, vehicleType: true },
+        });
+      }
+      response.driver = driver;
     }
 
     return response;

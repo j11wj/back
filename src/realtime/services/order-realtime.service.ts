@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException, BadRequestException, Inject, for
 import { PrismaService } from '../../prisma/prisma.service';
 import { OrdersService } from '../../orders/orders.service';
 import { RealtimeGateway } from '../realtime.gateway';
+import { PushService } from '../../push/push.service';
 import { UserRole } from '../../common/types/user-role.type';
 
 interface DriverLocationBroadcast {
@@ -20,6 +21,7 @@ export class OrderRealtimeService {
     private prisma: PrismaService,
     @Inject(forwardRef(() => OrdersService))
     private ordersService: OrdersService,
+    private pushService: PushService,
   ) {}
 
   /**
@@ -225,6 +227,65 @@ export class OrderRealtimeService {
         );
       } else {
         this.logger.warn(`Order ${orderId} has no pool/zone id; skipping zone broadcast`);
+      }
+
+      // FCM push للسائقين (يصل حتى لو التطبيق مغلق)
+      try {
+        const restaurantName = order.restaurant?.name ?? 'مطعم';
+        const fare = order.fare ?? 0;
+        await this.pushService.notifyDriversNewOrder({
+          orderId,
+          poolZoneId: order.poolZoneId ?? order.zoneId ?? null,
+          pickupLat: order.pickupLatitude ?? 0,
+          pickupLng: order.pickupLongitude ?? 0,
+          restaurantName,
+          fare,
+        });
+      } catch (fcmErr: any) {
+        this.logger.warn(`FCM driver notify failed: ${fcmErr?.message}`);
+      }
+
+      // FCM للمطعم المحدد (إن وُجد) — يصل حتى لو التطبيق مغلق
+      if (order.restaurant?.userId || order.restaurantId) {
+        try {
+          let restaurantUserId: string | null = order.restaurant?.userId ?? null;
+          if (!restaurantUserId && order.restaurantId) {
+            const rest = await this.prisma.restaurant.findUnique({
+              where: { id: order.restaurantId },
+              select: { userId: true },
+            });
+            restaurantUserId = rest?.userId ?? null;
+          }
+          if (restaurantUserId) {
+            const customerName = order.customer?.name ?? 'زبون';
+            await this.pushService.notifyRestaurantNewOrder(restaurantUserId, {
+              orderId,
+              customerName,
+              total: order.total ?? 0,
+            });
+          }
+        } catch (fcmErr: any) {
+          this.logger.warn(`FCM restaurant notify failed: ${fcmErr?.message}`);
+        }
+      }
+
+      // FCM للزبون — تأكيد إنشاء الطلب
+      if (order.customerId) {
+        try {
+          const customer = await this.prisma.user.findUnique({
+            where: { id: order.customerId },
+            select: { fcmToken: true },
+          });
+          if (customer?.fcmToken) {
+            await this.pushService.sendToToken(customer.fcmToken, {
+              title: 'تم استلام طلبك',
+              body: 'طلبك قيد المعالجة الآن',
+              data: { type: 'order_created', orderId },
+            });
+          }
+        } catch (fcmErr: any) {
+          this.logger.warn(`FCM customer notify failed: ${fcmErr?.message}`);
+        }
       }
 
       this.logger.log(`Notified about new order ${orderId}`);
